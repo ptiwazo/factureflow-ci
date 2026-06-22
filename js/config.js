@@ -41,20 +41,57 @@ export const CONFIG = {
 // ⚠️ IFRS ne définit pas de numéros de comptes : ces catégories servent à
 // classer chaque ligne ; le numéro de compte réel est mappé par l'utilisateur
 // dans Réglages (à valider par un expert-comptable).
+// Liste enrichie. Les codes existants sont conservés (compatibilité des lignes
+// déjà enregistrées) ; les catégories plus fines viennent les compléter.
 export const CATEGORIES_CHARGE = [
+  // --- Achats / stocks ---
   { code: "marchandises",   label: "Achats de marchandises" },
   { code: "matieres",       label: "Matières premières & consommables" },
-  { code: "fournitures",    label: "Fournitures & petit matériel" },
-  { code: "services",       label: "Services extérieurs (honoraires, sous-traitance)" },
+  { code: "fournitures",    label: "Fournitures de bureau & petit matériel" },
+  { code: "emballages",     label: "Emballages" },
+  { code: "pieces",         label: "Pièces détachées & consommables techniques" },
+
+  // --- Services extérieurs ---
+  { code: "services",       label: "Services extérieurs (divers)" },
+  { code: "honoraires",     label: "Honoraires (conseil, avocat, expert-comptable)" },
+  { code: "soustraitance",  label: "Sous-traitance" },
+  { code: "interim",        label: "Personnel intérimaire & détaché" },
   { code: "entretien",      label: "Entretien & réparations" },
+  { code: "maintenance",    label: "Maintenance & support technique" },
+  { code: "nettoyage",      label: "Nettoyage & propreté" },
+  { code: "securite",       label: "Sécurité & gardiennage" },
+  { code: "logiciels",      label: "Logiciels, licences & abonnements SaaS" },
+  { code: "documentation",  label: "Documentation & abonnements" },
+  { code: "formation",      label: "Formation" },
+  { code: "publicite",      label: "Publicité, marketing & communication" },
+  { code: "restauration",   label: "Restauration & réception" },
+
+  // --- Locations ---
   { code: "loyers",         label: "Loyers & charges locatives" },
-  { code: "transport",      label: "Transport & logistique" },
+  { code: "location_mat",   label: "Location de matériel & véhicules" },
+
+  // --- Logistique / déplacements ---
+  { code: "transport",      label: "Transport sur achats & logistique" },
   { code: "deplacements",   label: "Déplacements & missions" },
-  { code: "energie",        label: "Énergie & fluides (eau, électricité, carburant)" },
+  { code: "carburant",      label: "Carburant" },
+  { code: "douane",         label: "Droits de douane & transit" },
+
+  // --- Énergie & fluides ---
+  { code: "energie",        label: "Énergie & fluides (regroupé)" },
+  { code: "electricite",    label: "Électricité" },
+  { code: "eau",            label: "Eau" },
+
+  // --- Communications ---
   { code: "telecom",        label: "Télécoms & internet" },
+  { code: "poste",          label: "Frais postaux & courrier" },
+
+  // --- Frais financiers / divers ---
   { code: "assurances",     label: "Assurances" },
-  { code: "publicite",      label: "Publicité & marketing" },
+  { code: "banque",         label: "Frais & commissions bancaires" },
+  { code: "medical",        label: "Frais médicaux & santé" },
   { code: "impots",         label: "Impôts & taxes" },
+
+  // --- Hors charges ---
   { code: "immobilisation", label: "Immobilisation (à capitaliser, non charge)" },
   { code: "autres",         label: "Autres charges" },
 ];
