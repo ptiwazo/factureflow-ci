@@ -131,6 +131,10 @@ export async function exporterSAP(factures) {
     const tva = Number(f.montant_tva) || 0;
     const ttc = Number(f.total_ttc) || 0;
 
+    // Compte fournisseur : compte SAP propre au fournisseur en priorité,
+    // sinon le compte collectif par défaut (paramètre SAP).
+    const compteFourn = (f.fournisseurs?.compte_sap || "").trim() || c.compteFournisseur;
+
     const base = [piece, c.typePiece, datePiece, datePiece, c.societe, devise, ref];
     // Débit charge
     lignes.push([...base, "40", c.compteCharge, "", num(ht), c.codeTva, texte]);
@@ -139,7 +143,7 @@ export async function exporterSAP(factures) {
       lignes.push([...base, "40", c.compteTva, "", num(tva), c.codeTva, "TVA deductible"]);
     }
     // Crédit fournisseur
-    lignes.push([...base, "31", c.compteFournisseur, tiers, num(ttc), "", texte]);
+    lignes.push([...base, "31", compteFourn, tiers, num(ttc), "", texte]);
     piece++;
   }
 

@@ -29,25 +29,46 @@ export async function getFournisseur(id) {
   return data;
 }
 
+// Recherche un fournisseur existant (par NCC, sinon par nom) SANS le créer.
+// Sert à savoir s'il est "nouveau" avant la 2ᵉ validation (saisie compte SAP).
+export async function rechercherFournisseur({ nom, ncc }) {
+  const org = orgId();
+  const n = (ncc || "").trim();
+  if (n) {
+    const { data } = await supabase
+      .from("fournisseurs").select("*").eq("org_id", org).eq("ncc", n).maybeSingle();
+    if (data) return data;
+  }
+  if (nom) {
+    const { data } = await supabase
+      .from("fournisseurs").select("*").eq("org_id", org).ilike("nom", nom.trim()).limit(1);
+    if (data && data.length) return data[0];
+  }
+  return null;
+}
+
 // Déduplication par NCC : si un fournisseur de l'org a déjà ce NCC, on le
 // renvoie ; sinon on le crée. Sans NCC, on tente un rapprochement par nom.
-export async function trouverOuCreerFournisseur({ nom, ncc, rccm, telephone }) {
+// `compteSap` (CardCode) est renseigné à la création ; sur un fournisseur
+// existant sans compte SAP, on le complète si fourni.
+export async function trouverOuCreerFournisseur({ nom, ncc, rccm, telephone, compteSap }) {
   const org = orgId();
   ncc = (ncc || "").trim() || null;
+  compteSap = (compteSap || "").trim() || null;
 
-  if (ncc) {
-    const { data: exist } = await supabase
-      .from("fournisseurs").select("*").eq("org_id", org).eq("ncc", ncc).maybeSingle();
-    if (exist) return exist;
-  } else if (nom) {
-    const { data: parNom } = await supabase
-      .from("fournisseurs").select("*").eq("org_id", org).ilike("nom", nom.trim()).limit(1);
-    if (parNom && parNom.length) return parNom[0];
+  const existant = await rechercherFournisseur({ nom, ncc });
+  if (existant) {
+    // Complète le compte SAP s'il manquait et qu'on en fournit un.
+    if (compteSap && !existant.compte_sap) {
+      await supabase.from("fournisseurs").update({ compte_sap: compteSap }).eq("id", existant.id);
+      existant.compte_sap = compteSap;
+    }
+    return existant;
   }
 
   const { data, error } = await supabase.from("fournisseurs")
-    .insert({ org_id: org, nom: nom || "Fournisseur inconnu", ncc, rccm: rccm || null, telephone: telephone || null,
-      created_by: getProfil()?.user?.id })
+    .insert({ org_id: org, nom: nom || "Fournisseur inconnu", ncc, rccm: rccm || null,
+      telephone: telephone || null, compte_sap: compteSap, created_by: getProfil()?.user?.id })
     .select().single();
   if (error) throw error;
   return data;
@@ -61,7 +82,7 @@ export async function majFournisseur(id, patch) {
 /* ------------------------------ Factures --------------------------- */
 export async function listerFactures({ statut, fournisseurId, debut, fin } = {}) {
   let q = supabase.from("factures")
-    .select("*, fournisseurs(nom, ncc)")
+    .select("*, fournisseurs(nom, ncc, compte_sap)")
     .order("date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
   if (statut) q = q.eq("statut", statut);
@@ -132,6 +153,7 @@ export async function creerFactureComplete({ entete, lignes, fichier, extraction
       quantite: l.quantite || 0,
       prix_unitaire: l.prix_unitaire || 0,
       montant_ht: l.montant_ht || 0,
+      taux_tva: l.taux_tva != null ? l.taux_tva : CONFIG.TVA_DEFAUT,
     }));
     const { error: errL } = await supabase.from("lignes").insert(rows);
     if (errL) throw errL;

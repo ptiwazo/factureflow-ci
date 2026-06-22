@@ -6,9 +6,9 @@
    factures non conformes (NCC absent). Rien n'est enregistré sans action
    explicite de l'utilisateur — aucune validation silencieuse de montants.
 ===================================================================== */
-import { $, $$, setView, toast, busy, fcfa, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
+import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
 import { CONFIG } from "../config.js";
-import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon } from "../store.js";
+import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
 
@@ -91,31 +91,31 @@ export function render() {
         <button id="add-ligne" class="btn btn-secondary btn-sm">+ Ligne</button>
       </div>
       <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th></th></tr></thead>
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th></th></tr></thead>
         <tbody id="lignes-body"></tbody>
       </table>
     </div>
 
     <div class="card">
       <h3>Totaux</h3>
-      <div class="field" style="max-width:160px">
-        <label for="taux-tva">Taux de TVA (%)</label>
+      <div class="field" style="max-width:230px">
+        <label for="taux-tva">Taux TVA par défaut (%) <small>nouvelles lignes</small></label>
         <input id="taux-tva" type="number" step="0.01" value="${d.totaux.taux_tva ?? CONFIG.TVA_DEFAUT}" />
       </div>
       <div class="totaux-box">
         <div class="totaux-row"><span>Total HT</span><strong id="t-ht">—</strong></div>
-        <div class="totaux-row"><span>TVA (<span id="t-taux">18</span>%)</span><strong id="t-tva">—</strong></div>
+        <div class="totaux-row"><span>TVA <span id="t-taux" class="muted"></span></span><strong id="t-tva">—</strong></div>
         <div class="totaux-row grand"><span>Total TTC</span><strong id="t-ttc">—</strong></div>
       </div>
       <p class="muted" style="font-size:.78rem;margin-top:.6rem">
-        Totaux recalculés automatiquement à partir des lignes. ⚠️ Les règles fiscales
-        (taux, exonérations) sont à valider par un expert-comptable / la DGI.
+        TVA calculée <strong>ligne par ligne</strong> (taux mixtes / exonérations possibles).
+        ⚠️ Les règles fiscales sont à valider par un expert-comptable / la DGI.
       </p>
     </div>
 
     <div class="row" style="gap:10px;margin-bottom:24px">
       <button id="btn-non-conforme" class="btn btn-secondary grow">Marquer non conforme</button>
-      <button id="btn-valider" class="btn btn-primary grow">Valider & enregistrer</button>
+      <button id="btn-valider" class="btn btn-primary grow">Valider →</button>
     </div>
   `);
 
@@ -146,17 +146,23 @@ export function render() {
 
 // Crée une ligne éditable ; recalcul auto du montant HT = qté × PU.
 function ligneRow(l) {
+  // Taux TVA de la ligne : valeur extraite, sinon taux par défaut courant.
+  const tauxDefaut = toNumber($("#taux-tva")?.value) || CONFIG.TVA_DEFAUT;
+  const tauxLigne = l.taux_tva != null && l.taux_tva !== "" ? toNumber(l.taux_tva) : tauxDefaut;
+
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td class="col-des"><input class="l-des" type="text" value="${(l.designation || "").replace(/"/g, "&quot;")}" /></td>
-    <td><input class="l-qte" type="number" step="0.001" value="${l.quantite || 0}" style="width:64px" /></td>
-    <td><input class="l-pu" type="number" step="0.01" value="${l.prix_unitaire || 0}" style="width:90px" /></td>
-    <td><input class="l-ht" type="number" step="0.01" value="${l.montant_ht || 0}" style="width:100px" /></td>
+    <td><input class="l-qte" type="number" step="0.001" value="${l.quantite || 0}" style="width:60px" /></td>
+    <td><input class="l-pu" type="number" step="0.01" value="${l.prix_unitaire || 0}" style="width:86px" /></td>
+    <td><input class="l-ht" type="number" step="0.01" value="${l.montant_ht || 0}" style="width:96px" /></td>
+    <td><input class="l-tva" type="number" step="0.01" value="${tauxLigne}" style="width:56px" /></td>
     <td><button class="icon-btn l-del" style="color:var(--danger)" title="Supprimer">✕</button></td>`;
 
   const qte = tr.querySelector(".l-qte");
   const pu = tr.querySelector(".l-pu");
   const ht = tr.querySelector(".l-ht");
+  const tva = tr.querySelector(".l-tva");
   let htEditeManuellement = false;
 
   const autoHt = () => {
@@ -167,6 +173,7 @@ function ligneRow(l) {
   qte.addEventListener("input", autoHt);
   pu.addEventListener("input", autoHt);
   ht.addEventListener("input", () => { htEditeManuellement = true; recalculer(); });
+  tva.addEventListener("input", recalculer);
   tr.querySelector(".l-del").addEventListener("click", () => { tr.remove(); recalculer(); });
 
   return tr;
@@ -178,16 +185,20 @@ function lireLignes() {
     quantite: toNumber(tr.querySelector(".l-qte").value),
     prix_unitaire: toNumber(tr.querySelector(".l-pu").value),
     montant_ht: toNumber(tr.querySelector(".l-ht").value),
+    taux_tva: toNumber(tr.querySelector(".l-tva").value),
   })).filter((l) => l.designation || l.montant_ht);
 }
 
 let totauxCourants = { total_ht: 0, montant_tva: 0, total_ttc: 0 };
 
 function recalculer() {
-  const taux = toNumber($("#taux-tva").value);
-  const t = calculerTotaux(lireLignes(), taux);
+  const tauxDefaut = toNumber($("#taux-tva").value);
+  const lignes = lireLignes();
+  const t = calculerTotaux(lignes, tauxDefaut);
   totauxCourants = t;
-  $("#t-taux").textContent = taux;
+  // Libellé : si toutes les lignes partagent le même taux, on l'affiche ; sinon "taux mixtes".
+  const taux = [...new Set(lignes.map((l) => toNumber(l.taux_tva)))];
+  $("#t-taux").textContent = taux.length === 1 ? `(${taux[0]}%)` : "(taux mixtes)";
   $("#t-ht").textContent = fcfa(t.total_ht);
   $("#t-tva").textContent = fcfa(t.montant_tva);
   $("#t-ttc").textContent = fcfa(t.total_ttc);
@@ -207,6 +218,8 @@ function majAlertes() {
   box.innerHTML = alertes.join("");
 }
 
+// ÉTAPE 1 — Première validation : contrôle les données, vérifie le doublon
+// et l'existence du fournisseur, puis ouvre la 2ᵉ validation (récap + compte SAP).
 async function enregistrer(btn, forcerNonConforme) {
   const ncc = $("#f-ncc").value.trim();
   const nom = $("#f-nom").value.trim();
@@ -218,78 +231,137 @@ async function enregistrer(btn, forcerNonConforme) {
   // Cohérence des totaux : on prévient si l'écart HT+TVA vs TTC est notable.
   const ecart = ecartCoherence({ ...totauxCourants });
   if (ecart > 1 && !forcerNonConforme) {
-    const ok = confirm(`Incohérence détectée entre HT + TVA et TTC (écart ${fcfa(ecart)}). Enregistrer quand même ?`);
+    const ok = confirm(`Incohérence détectée entre HT + TVA et TTC (écart ${fcfa(ecart)}). Continuer quand même ?`);
     if (!ok) return;
   }
 
-  // Statut : non conforme si demandé OU si NCC absent.
+  const numero = $("#fc-num").value.trim();
+  const dateFacture = $("#fc-date").value || null;
   const statut = (forcerNonConforme || !ncc) ? "non_conforme" : "validee";
 
   busy(btn, true, "Vérification…");
+  let doublon = null, existant = null;
   try {
-    // 1) Fournisseur (déduplication par NCC dans le store).
-    const fournisseur = await trouverOuCreerFournisseur({
-      nom, ncc,
-      rccm: $("#f-rccm").value.trim(),
-      telephone: $("#f-tel").value.trim(),
+    // Existence du fournisseur d'abord, pour permettre le repli "date + TTC".
+    existant = await rechercherFournisseur({ nom, ncc });
+    // Doublon : par numéro (niveau organisation), repli date+TTC sur le même fournisseur.
+    doublon = await chercherDoublon({
+      numero, date: dateFacture, totalTtc: totauxCourants.total_ttc, fournisseurId: existant?.id,
     });
-
-    // 1b) Détection de doublon : même fournisseur + même n° (ou date + TTC).
-    const numero = $("#fc-num").value.trim();
-    const dateFacture = $("#fc-date").value || null;
-    const doublon = await chercherDoublon({
-      fournisseurId: fournisseur.id, numero, date: dateFacture, totalTtc: totauxCourants.total_ttc,
-    });
-    if (doublon) {
-      busy(btn, false);
-      const fournExist = doublon.fournisseurs?.nom || "fournisseur inconnu";
-      const ok = confirm(
-        `⚠️ Doublon probable : le numéro de facture « ${numero || "sans n°"} » existe déjà ` +
-        `(${fournExist} · ${fcfa(doublon.total_ttc)}).\n\n` +
-        `Enregistrer quand même cette facture ?`);
-      if (!ok) return; // on bloque par défaut
-      busy(btn, true, "Enregistrement…");
-    } else {
-      busy(btn, true, "Enregistrement…");
-    }
-
-    // 2) Facture + lignes + original.
-    const facture = await creerFactureComplete({
-      entete: {
-        fournisseur_id: fournisseur.id,
-        numero,
-        date: dateFacture,
-        echeance: $("#fc-ech").value || null,
-        devise: $("#fc-dev").value.trim() || CONFIG.DEVISE_DEFAUT,
-        taux_tva: toNumber($("#taux-tva").value),
-        total_ht: totauxCourants.total_ht,
-        montant_tva: totauxCourants.montant_tva,
-        total_ttc: totauxCourants.total_ttc,
-        statut,
-      },
-      lignes,
-      fichier: draft.fichier,
-      extractionBrute: draft.data, // sortie IA brute conservée (audit/traçabilité)
-    });
-
-    await journaliser(statut === "non_conforme" ? "facture_non_conforme" : "validation", `facture:${facture.id}`);
-    toast(statut === "non_conforme" ? "Enregistrée (non conforme)." : "Facture validée ✔", "success");
-
-    // Données de la facture courante traitées : on les nettoie.
-    draft.data = null; draft.fichier = null; draft.apercu = null;
-
-    // Import multiple : enchaîner sur la facture suivante de la file.
-    draft.index++;
-    if (draft.index < draft.queue.length) {
-      await analyserCourant();   // analyse la suivante → revient en vérification
-      return;
-    }
-
-    // Fin du lot (ou facture unique).
-    resetDraft();
-    navigate(`#/facture/${facture.id}`);
   } catch (e) {
     busy(btn, false);
-    toast(e.message || "Échec de l'enregistrement.", "error", 5000);
+    return toast(e.message || "Vérification impossible.", "error");
   }
+  busy(btn, false);
+
+  if (doublon) {
+    const fournExist = doublon.fournisseurs?.nom || "fournisseur inconnu";
+    const ok = confirm(
+      `⚠️ Doublon probable : le numéro « ${numero || "sans n°"} » existe déjà ` +
+      `(${fournExist} · ${fcfa(doublon.total_ttc)}).\n\nContinuer quand même ?`);
+    if (!ok) return; // bloqué par défaut
+  }
+
+  // ÉTAPE 2 — Seconde validation : récapitulatif + compte SAP si fournisseur nouveau.
+  ouvrirSecondeValidation({
+    nom, ncc, numero, dateFacture, statut,
+    rccm: $("#f-rccm").value.trim(),
+    telephone: $("#f-tel").value.trim(),
+    echeance: $("#fc-ech").value || null,
+    devise: $("#fc-dev").value.trim() || CONFIG.DEVISE_DEFAUT,
+    lignes,
+    fournisseurExistant: existant,
+  });
+}
+
+// Modale de seconde validation. Si le fournisseur est nouveau, propose la
+// saisie de son compte SAP (CardCode), enregistré sur la fiche fournisseur.
+function ouvrirSecondeValidation(ctx) {
+  const nouveau = !ctx.fournisseurExistant;
+  const compteExistant = ctx.fournisseurExistant?.compte_sap || "";
+
+  const back = document.createElement("div");
+  back.className = "modal-backdrop";
+  back.id = "valid-modal";
+  back.innerHTML = `
+    <div class="modal">
+      <div class="row between mb">
+        <strong>Seconde validation</strong>
+        <button class="icon-btn" id="vm-close" style="color:var(--text)">✕</button>
+      </div>
+      <div class="detail-grid mb">
+        <div><div class="dt">Fournisseur</div><div class="dd">${esc(ctx.nom)}</div></div>
+        <div><div class="dt">NCC</div><div class="dd">${esc(ctx.ncc || "—")}</div></div>
+        <div><div class="dt">N° facture</div><div class="dd">${esc(ctx.numero || "—")}</div></div>
+        <div><div class="dt">Date</div><div class="dd">${dateFr(ctx.dateFacture)}</div></div>
+        <div><div class="dt">Total TTC</div><div class="dd">${fcfa(totauxCourants.total_ttc, ctx.devise)}</div></div>
+        <div><div class="dt">Statut</div><div class="dd">${ctx.statut === "non_conforme" ? "Non conforme" : "Validée"}</div></div>
+      </div>
+      ${nouveau ? `
+        <div class="alert alert-info">🆕 <div>Nouveau fournisseur. Renseignez son <strong>compte SAP (CardCode)</strong> pour l'export FI (facultatif, modifiable plus tard).</div></div>
+        <div class="field"><label for="vm-sap">Compte SAP fournisseur</label>
+          <input id="vm-sap" placeholder="Ex. F0001" /></div>`
+      : `<p class="muted" style="font-size:.85rem">Fournisseur existant${compteExistant ? ` — compte SAP : <strong>${esc(compteExistant)}</strong>` : " (sans compte SAP)"}.</p>`}
+      <div class="row" style="gap:10px;margin-top:8px">
+        <button class="btn btn-ghost grow" id="vm-cancel">Modifier</button>
+        <button class="btn btn-primary grow" id="vm-ok">Confirmer l'enregistrement</button>
+      </div>
+    </div>`;
+  document.body.appendChild(back);
+
+  const fermer = () => back.remove();
+  back.addEventListener("click", (e) => { if (e.target === back) fermer(); });
+  $("#vm-close", back).onclick = fermer;
+  $("#vm-cancel", back).onclick = fermer;
+  $("#vm-ok", back).onclick = async (e) => {
+    const compteSap = nouveau ? ($("#vm-sap", back).value.trim()) : compteExistant;
+    busy(e.currentTarget, true, "Enregistrement…");
+    try {
+      await sauvegarder({ ...ctx, compteSap });
+      fermer();
+    } catch (err) {
+      busy(e.currentTarget, false);
+      toast(err.message || "Échec de l'enregistrement.", "error", 5000);
+    }
+  };
+}
+
+// Écrit le fournisseur (avec compte SAP) + la facture, puis enchaîne la file.
+async function sauvegarder(ctx) {
+  const fournisseur = await trouverOuCreerFournisseur({
+    nom: ctx.nom, ncc: ctx.ncc, rccm: ctx.rccm, telephone: ctx.telephone, compteSap: ctx.compteSap,
+  });
+
+  const facture = await creerFactureComplete({
+    entete: {
+      fournisseur_id: fournisseur.id,
+      numero: ctx.numero,
+      date: ctx.dateFacture,
+      echeance: ctx.echeance,
+      devise: ctx.devise,
+      taux_tva: toNumber($("#taux-tva")?.value) || CONFIG.TVA_DEFAUT,
+      total_ht: totauxCourants.total_ht,
+      montant_tva: totauxCourants.montant_tva,
+      total_ttc: totauxCourants.total_ttc,
+      statut: ctx.statut,
+    },
+    lignes: ctx.lignes,
+    fichier: draft.fichier,
+    extractionBrute: draft.data,
+  });
+
+  await journaliser(ctx.statut === "non_conforme" ? "facture_non_conforme" : "validation", `facture:${facture.id}`);
+  toast(ctx.statut === "non_conforme" ? "Enregistrée (non conforme)." : "Facture validée ✔", "success");
+
+  // Données de la facture courante traitées : on les nettoie.
+  draft.data = null; draft.fichier = null; draft.apercu = null;
+
+  // Import multiple : enchaîner sur la facture suivante.
+  draft.index++;
+  if (draft.index < draft.queue.length) {
+    await analyserCourant();
+    return;
+  }
+  resetDraft();
+  navigate(`#/facture/${facture.id}`);
 }

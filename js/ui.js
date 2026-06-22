@@ -77,14 +77,23 @@ export function nccValide(ncc) {
   return /^[0-9A-Z]{7,15}$/.test(v);
 }
 
-// Recalcule les totaux à partir des lignes et d'un taux de TVA.
+// Recalcule les totaux à partir des lignes. La TVA est calculée PAR LIGNE
+// (chaque ligne peut avoir son propre taux : taux mixtes / exonérations).
+// `tauxDefaut` s'applique aux lignes sans taux explicite.
 // Retourne { total_ht, montant_tva, total_ttc }.
-export function calculerTotaux(lignes, tauxTva) {
-  const total_ht = (lignes || []).reduce((s, l) => s + (toNumber(l.montant_ht) || 0), 0);
-  const taux = toNumber(tauxTva);
-  const montant_tva = Math.round(total_ht * taux) / 100;
+export function calculerTotaux(lignes, tauxDefaut) {
+  const def = toNumber(tauxDefaut);
+  let total_ht = 0, montant_tva = 0;
+  for (const l of lignes || []) {
+    const ht = toNumber(l.montant_ht) || 0;
+    const taux = l.taux_tva != null && l.taux_tva !== "" ? toNumber(l.taux_tva) : def;
+    total_ht += ht;
+    montant_tva += ht * taux / 100;
+  }
+  total_ht = Math.round(total_ht * 100) / 100;
+  montant_tva = Math.round(montant_tva * 100) / 100;
   const total_ttc = Math.round((total_ht + montant_tva) * 100) / 100;
-  return { total_ht: Math.round(total_ht * 100) / 100, montant_tva, total_ttc };
+  return { total_ht, montant_tva, total_ttc };
 }
 
 // Vérifie la cohérence HT/TVA/TTC (tolérance d'arrondi). Renvoie un écart en valeur.

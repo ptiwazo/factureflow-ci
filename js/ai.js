@@ -46,8 +46,9 @@ const OUTIL_EXTRACTION = {
             quantite: { type: "number" },
             prix_unitaire: { type: "number" },
             montant_ht: { type: "number" },
+            taux_tva: { type: "number", description: "Taux de TVA de la ligne en %, 18 par défaut en CI ; 0 si exonérée." },
           },
-          required: ["designation", "quantite", "prix_unitaire", "montant_ht"],
+          required: ["designation", "quantite", "prix_unitaire", "montant_ht", "taux_tva"],
         },
       },
       totaux: {
@@ -181,6 +182,9 @@ function normaliser(raw = {}) {
       quantite: Number(l.quantite) || 0,
       prix_unitaire: Number(l.prix_unitaire) || 0,
       montant_ht: Number(l.montant_ht) || (Number(l.quantite) || 0) * (Number(l.prix_unitaire) || 0),
+      // Taux de TVA de la ligne : repli sur le taux global puis 18 % (CI).
+      taux_tva: l.taux_tva != null ? Number(l.taux_tva)
+        : (raw.totaux?.taux_tva != null ? Number(raw.totaux.taux_tva) : CONFIG.TVA_DEFAUT),
     })) : [],
     totaux: {
       total_ht: Number(raw.totaux?.total_ht) || 0,

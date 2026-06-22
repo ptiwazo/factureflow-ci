@@ -73,6 +73,8 @@ export async function renderDetail(id) {
         <div class="grow field"><label for="e-rccm">RCCM</label><input id="e-rccm" value="${esc(f.rccm || "")}" ${peutEcrire ? "" : "disabled"} /></div>
         <div class="grow field"><label for="e-tel">Téléphone</label><input id="e-tel" value="${esc(f.telephone || "")}" ${peutEcrire ? "" : "disabled"} /></div>
       </div>
+      <div class="field"><label for="e-sap">Compte SAP (CardCode)</label>
+        <input id="e-sap" value="${esc(f.compte_sap || "")}" placeholder="Ex. F0001" ${peutEcrire ? "" : "disabled"} /></div>
       ${peutEcrire ? `<button id="btn-save" class="btn btn-primary btn-sm">Enregistrer</button>` : ""}
     </div>
 
@@ -101,6 +103,7 @@ export async function renderDetail(id) {
         ncc: $("#e-ncc").value.trim() || null,
         rccm: $("#e-rccm").value.trim() || null,
         telephone: $("#e-tel").value.trim() || null,
+        compte_sap: $("#e-sap").value.trim() || null,
       });
       await journaliser("maj_fournisseur", `fournisseur:${id}`);
       toast("Fournisseur mis à jour.", "success");
