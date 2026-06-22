@@ -9,7 +9,7 @@
      format générique fourni, à valider/adapter par l'expert-comptable.
 ===================================================================== */
 import { fcfa, dateFr, esc } from "../ui.js";
-import { journaliser } from "../store.js";
+import { journaliser, getLignes } from "../store.js";
 import { getProfil } from "../auth.js";
 
 // En-têtes du relevé comptable.
@@ -105,8 +105,9 @@ const COLS_SAP = [
 ];
 
 // Génère un CSV d'écritures FI en partie double, prêt pour un import LSMW/FB01.
-// Pour chaque facture : débit charge (40) + débit TVA déductible (40, si TVA)
-// + crédit fournisseur (31). Les 2-3 lignes partagent un NumPiece.
+// Pour chaque facture : une ligne de débit charge (40) PAR LIGNE D'ARTICLE
+// (Texte = désignation de la facture), puis débit TVA déductible (40, si TVA)
+// et crédit fournisseur (31). Toutes les lignes d'une facture partagent un NumPiece.
 export async function exporterSAP(factures) {
   const c = getParamsSAP();
   if (!c.compteCharge) {
@@ -136,25 +137,38 @@ export async function exporterSAP(factures) {
     const datePiece = f.date || "";
     const ref = f.numero || "";
     const tiers = f.fournisseurs?.ncc || f.fournisseurs?.nom || "";
-    const texte = f.fournisseurs?.nom || "";
+    const nomFourn = f.fournisseurs?.nom || "";
     const devise = f.devise || "XOF";
-    const ht = Number(f.total_ht) || 0;
     const tva = Number(f.montant_tva) || 0;
     const ttc = Number(f.total_ttc) || 0;
 
-    // Compte crédit = compte SAP (CardCode) du fournisseur (garanti présent
-    // par le contrôle ci-dessus).
+    // Compte crédit = compte SAP (CardCode) du fournisseur (garanti présent).
     const compteFourn = (f.fournisseurs?.compte_sap || "").trim();
 
+    // Lignes d'articles de la facture (pour le texte = désignation).
+    let articles = [];
+    try { articles = await getLignes(f.id); } catch { articles = []; }
+
     const base = [piece, c.typePiece, datePiece, datePiece, c.societe, devise, ref];
-    // Débit charge
-    lignes.push([...base, "40", c.compteCharge, "", num(ht), c.codeTva, texte]);
-    // Débit TVA déductible (si présente et compte configuré)
+
+    // Débit charge : une ligne par article, Texte = sa désignation.
+    if (articles.length) {
+      for (const a of articles) {
+        const tauxL = a.taux_tva != null ? a.taux_tva : (f.taux_tva ?? "");
+        lignes.push([...base, "40", c.compteCharge, "", num(a.montant_ht),
+          tauxL !== "" ? c.codeTva : "", a.designation || nomFourn]);
+      }
+    } else {
+      // Repli : pas de lignes détaillées → une seule ligne de charge sur le total HT.
+      lignes.push([...base, "40", c.compteCharge, "", num(f.total_ht), c.codeTva, nomFourn]);
+    }
+
+    // Débit TVA déductible (montant total de TVA de la facture).
     if (tva > 0 && c.compteTva) {
       lignes.push([...base, "40", c.compteTva, "", num(tva), c.codeTva, "TVA deductible"]);
     }
-    // Crédit fournisseur
-    lignes.push([...base, "31", compteFourn, tiers, num(ttc), "", texte]);
+    // Crédit fournisseur (TTC).
+    lignes.push([...base, "31", compteFourn, tiers, num(ttc), "", nomFourn]);
     piece++;
   }
 
