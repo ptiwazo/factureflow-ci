@@ -12,7 +12,10 @@ export async function renderListe() {
   setView(`
     <div class="row between">
       <h1 class="page-title">Fournisseurs</h1>
-      ${peutEcrire ? `<button id="btn-import" class="btn btn-secondary btn-sm">⬆ Importer Excel</button>` : ""}
+      ${peutEcrire ? `<div class="row" style="gap:8px">
+        <button id="btn-modele" class="btn btn-ghost btn-sm">⬇ Modèle</button>
+        <button id="btn-import" class="btn btn-secondary btn-sm">⬆ Importer Excel</button>
+      </div>` : ""}
     </div>
     <input id="recherche" type="search" placeholder="Rechercher par nom ou NCC…" class="mb" />
     <div id="import-info"></div>
@@ -24,6 +27,7 @@ export async function renderListe() {
     const input = $("#import-input");
     $("#btn-import").onclick = () => input.click();
     input.addEventListener("change", () => { if (input.files[0]) importerExcel(input.files[0]); input.value = ""; });
+    $("#btn-modele").onclick = (e) => telechargerModele(e.currentTarget);
   }
 
   let tous = [];
@@ -149,6 +153,37 @@ function mapLigne(row) {
     return "";
   };
   return { nom: lire("nom"), ncc: lire("ncc"), rccm: lire("rccm"), telephone: lire("telephone"), compteSap: lire("compteSap") };
+}
+
+// Télécharge un modèle Excel prêt à remplir (en-têtes reconnus + exemples).
+async function telechargerModele(btn) {
+  busy(btn, true, "Génération…");
+  try {
+    const mod = await import("https://esm.sh/xlsx@0.18.5");
+    const XLSX = mod.read ? mod : (mod.default || mod);
+    const donnees = [
+      ["Nom", "NCC", "RCCM", "Téléphone", "Compte SAP"],
+      ["Établissements Kouassi", "CC1234567A", "CI-ABJ-2020-B-12345", "+225 07 00 00 00 00", "F0001"],
+      ["Société Diallo & Fils", "CC7654321B", "", "+225 05 11 22 33 44", "F0002"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(donnees);
+    ws["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fournisseurs");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "modele_fournisseurs.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Modèle téléchargé.", "success");
+  } catch (e) {
+    toast("Génération du modèle impossible : " + (e.message || ""), "error");
+  } finally {
+    busy(btn, false);
+  }
 }
 
 async function importerExcel(file) {
