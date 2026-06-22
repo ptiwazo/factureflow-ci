@@ -66,7 +66,7 @@ export async function render() {
       </div>
       <div class="field"><label for="sap-charge">Compte de charge / achats (débit)</label><input id="sap-charge" placeholder="Ex. 601000" /></div>
       <div class="field"><label for="sap-tva">Compte TVA déductible (débit)</label><input id="sap-tva" placeholder="Ex. 445660" /></div>
-      <div class="field"><label for="sap-fourn">Compte fournisseur collectif (crédit)</label><input id="sap-fourn" placeholder="Ex. 401000" /></div>
+      <p class="muted" style="font-size:.8rem">Le compte crédit (fournisseur) provient du <strong>compte SAP de chaque fournisseur</strong> (fiche Fournisseurs).</p>
       <div class="field" style="max-width:200px"><label for="sap-codetva">Code TVA (MWSKZ)</label><input id="sap-codetva" placeholder="Ex. V1" /></div>
       <button id="sap-save" class="btn btn-primary btn-sm">Enregistrer les comptes</button>
     </div>
@@ -98,7 +98,6 @@ export async function render() {
   $("#sap-piece").value = sap.typePiece;
   $("#sap-charge").value = sap.compteCharge;
   $("#sap-tva").value = sap.compteTva;
-  $("#sap-fourn").value = sap.compteFournisseur;
   $("#sap-codetva").value = sap.codeTva;
   $("#sap-save").onclick = () => {
     setParamsSAP({
@@ -106,7 +105,6 @@ export async function render() {
       typePiece: $("#sap-piece").value.trim() || "KR",
       compteCharge: $("#sap-charge").value.trim(),
       compteTva: $("#sap-tva").value.trim(),
-      compteFournisseur: $("#sap-fourn").value.trim(),
       codeTva: $("#sap-codetva").value.trim(),
     });
     toast("Comptes SAP enregistrés.", "success");

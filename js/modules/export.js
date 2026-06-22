@@ -82,9 +82,10 @@ const PARAMS_SAP_DEFAUT = {
   societe: "",            // Code société SAP (BUKRS)
   compteCharge: "",       // Compte de charge / achats (débit)
   compteTva: "",          // Compte TVA déductible (débit)
-  compteFournisseur: "",  // Compte fournisseur collectif (crédit)
   codeTva: "",            // Indicateur de TVA (MWSKZ), ex. "V1"
   typePiece: "KR",        // Type de pièce (BLART), KR = facture fournisseur
+  // NB : le compte crédit fournisseur n'est plus collectif — il provient du
+  // compte SAP (CardCode) propre à chaque fournisseur (fournisseurs.compte_sap).
 };
 
 export function getParamsSAP() {
@@ -108,8 +109,18 @@ const COLS_SAP = [
 // + crédit fournisseur (31). Les 2-3 lignes partagent un NumPiece.
 export async function exporterSAP(factures) {
   const c = getParamsSAP();
-  if (!c.compteCharge || !c.compteFournisseur) {
-    throw new Error("Configurez d'abord les comptes SAP dans Réglages (compte de charge et compte fournisseur).");
+  if (!c.compteCharge) {
+    throw new Error("Configurez d'abord le compte de charge dans Réglages → Paramètres comptables SAP.");
+  }
+  // Le crédit utilise le compte SAP propre à chaque fournisseur : on bloque si
+  // certains fournisseurs n'en ont pas (à compléter sur leur fiche).
+  const sansCompte = [...new Set(
+    factures.filter((f) => !(f.fournisseurs?.compte_sap || "").trim())
+            .map((f) => f.fournisseurs?.nom || "Fournisseur inconnu")
+  )];
+  if (sansCompte.length) {
+    throw new Error("Compte SAP manquant pour : " + sansCompte.join(", ") +
+      ". Renseignez-le sur la fiche fournisseur avant l'export.");
   }
 
   const sep = ";";
@@ -131,9 +142,9 @@ export async function exporterSAP(factures) {
     const tva = Number(f.montant_tva) || 0;
     const ttc = Number(f.total_ttc) || 0;
 
-    // Compte fournisseur : compte SAP propre au fournisseur en priorité,
-    // sinon le compte collectif par défaut (paramètre SAP).
-    const compteFourn = (f.fournisseurs?.compte_sap || "").trim() || c.compteFournisseur;
+    // Compte crédit = compte SAP (CardCode) du fournisseur (garanti présent
+    // par le contrôle ci-dessus).
+    const compteFourn = (f.fournisseurs?.compte_sap || "").trim();
 
     const base = [piece, c.typePiece, datePiece, datePiece, c.societe, devise, ref];
     // Débit charge
