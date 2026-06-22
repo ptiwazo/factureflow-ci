@@ -1,99 +1,170 @@
 /* =====================================================================
    Module 6.1 — Capture & extraction
    ---------------------------------------------------------------------
-   Caméra/upload → compression client-side (clé réseau CI) → appel IA →
-   bascule vers l'écran de vérification. Gestion d'erreur réseau + retry
-   est portée par ai.js ; ici on gère l'UX (états, aperçu, échecs).
+   Caméra/upload (mono ou MULTIPLE) → compression client-side (clé réseau CI)
+   → file d'analyse → écran de vérification (obligatoire) entre chaque facture.
+   Pour un lot, on analyse une facture à la fois : l'utilisateur vérifie et
+   enregistre, puis la suivante est analysée automatiquement (cf. verification.js).
 ===================================================================== */
-import { $, toast, setView, busy } from "../ui.js";
+import { $, toast, setView, busy, esc } from "../ui.js";
 import { extraireFacture } from "../ai.js";
-import { draft, navigate } from "../app.js";
+import { draft, navigate, resetDraft } from "../app.js";
 
 // Taille max du grand côté après compression + qualité JPEG cible.
 const MAX_DIM = 1500;
 const QUALITE = 0.72;
 const TAILLE_CIBLE = 1.5 * 1024 * 1024; // 1,5 Mo
 
+// Fichiers sélectionnés en attente de préparation (avant clic "Analyser").
+let selection = [];
+
 export function render() {
+  selection = [];
+  resetDraft(); // repart d'un état propre (un lot interrompu ne laisse pas de résidu)
   setView(`
-    <h1 class="page-title">Nouvelle facture</h1>
+    <h1 class="page-title">Nouvelle(s) facture(s)</h1>
 
     <div class="alert alert-info">
-      📸 Photographiez ou importez la facture. Les données extraites devront
-      <strong>toujours être vérifiées</strong> avant enregistrement.
+      📸 Photographiez ou importez une ou <strong>plusieurs</strong> factures (images ou PDF).
+      Chaque facture sera <strong>vérifiée</strong> avant enregistrement.
     </div>
 
     <div id="dz" class="dropzone">
       <div class="big">🧾</div>
-      <p>Touchez pour <strong>prendre une photo</strong> ou importer une image / PDF.</p>
-      <p class="muted" style="font-size:.8rem">L'image est compressée sur votre téléphone pour économiser les données.</p>
+      <p>Touchez pour <strong>prendre une photo</strong> ou importer des images / PDF.</p>
+      <p class="muted" style="font-size:.8rem">Sélection multiple possible. Les images sont compressées sur votre téléphone.</p>
     </div>
 
-    <div id="apercu-zone" class="hidden mt">
-      <img id="apercu-img" class="preview-img" alt="Aperçu de la facture" />
-      <div id="apercu-pdf" class="hidden card center">📄 <span id="pdf-nom"></span></div>
+    <div id="liste-zone" class="hidden mt">
+      <div class="row between">
+        <strong id="liste-titre"></strong>
+        <button id="btn-vider" class="btn btn-ghost btn-sm">Tout retirer</button>
+      </div>
+      <div id="liste-fichiers" class="list mt"></div>
       <div class="capture-actions">
-        <button id="btn-refaire" class="btn btn-secondary">Reprendre</button>
-        <button id="btn-extraire" class="btn btn-primary">Analyser la facture</button>
+        <button id="btn-ajouter" class="btn btn-secondary">+ Ajouter</button>
+        <button id="btn-extraire" class="btn btn-primary">Analyser</button>
       </div>
     </div>
 
-    <!-- 'capture=environment' ouvre la caméra arrière sur mobile -->
-    <input id="file-input" type="file" accept="image/*,application/pdf" capture="environment" class="hidden" />
+    <!-- 'capture=environment' ouvre la caméra arrière sur mobile ; 'multiple' = lot -->
+    <input id="file-input" type="file" accept="image/*,application/pdf" capture="environment" multiple class="hidden" />
   `);
 
   const dz = $("#dz");
   const input = $("#file-input");
   dz.addEventListener("click", () => input.click());
-  input.addEventListener("change", () => onFichier(input.files[0]));
+  $("#btn-ajouter")?.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => { ajouterFichiers(input.files); input.value = ""; });
+
+  $("#btn-vider").addEventListener("click", () => { selection = []; majListe(); });
+  $("#btn-extraire").addEventListener("click", (e) => demarrerAnalyse(e.currentTarget));
 
   // Glisser-déposer (desktop).
   dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.style.borderColor = "var(--teal)"; });
   dz.addEventListener("dragleave", () => { dz.style.borderColor = ""; });
   dz.addEventListener("drop", (e) => {
     e.preventDefault(); dz.style.borderColor = "";
-    if (e.dataTransfer.files[0]) onFichier(e.dataTransfer.files[0]);
+    ajouterFichiers(e.dataTransfer.files);
   });
 }
 
-let fichierCourant = null;
+function ajouterFichiers(fileList) {
+  for (const f of Array.from(fileList || [])) {
+    const estPdf = f.type.includes("pdf");
+    const estImage = f.type.startsWith("image/");
+    if (!estPdf && !estImage) { toast(`Format ignoré : ${f.name}`, "warn"); continue; }
+    if (estPdf && f.size > 8 * 1024 * 1024) { toast(`PDF trop volumineux : ${f.name}`, "warn"); continue; }
+    selection.push(f);
+  }
+  majListe();
+}
 
-async function onFichier(file) {
-  if (!file) return;
-  const estPdf = file.type.includes("pdf");
-  const estImage = file.type.startsWith("image/");
-  if (!estPdf && !estImage) return toast("Format non supporté (image ou PDF).", "warn");
+function majListe() {
+  const zone = $("#liste-zone");
+  if (!selection.length) {
+    zone.classList.add("hidden");
+    $("#dz").classList.remove("hidden");
+    return;
+  }
+  $("#dz").classList.add("hidden");
+  zone.classList.remove("hidden");
+  $("#liste-titre").textContent = `${selection.length} facture(s) à analyser`;
+  $("#btn-extraire").textContent = selection.length > 1 ? `Analyser ${selection.length} factures` : "Analyser la facture";
 
+  $("#liste-fichiers").innerHTML = selection.map((f, i) => `
+    <div class="list-item" style="cursor:default">
+      <div class="li-main">
+        <div class="li-title">${f.type.includes("pdf") ? "📄" : "🖼️"} ${esc(f.name)}</div>
+        <div class="li-sub">${(f.size / 1024).toFixed(0)} Ko</div>
+      </div>
+      <button class="icon-btn" style="color:var(--danger)" data-rm="${i}" title="Retirer">✕</button>
+    </div>`).join("");
+
+  $("#liste-fichiers").querySelectorAll("[data-rm]").forEach((b) =>
+    b.addEventListener("click", () => { selection.splice(Number(b.dataset.rm), 1); majListe(); }));
+}
+
+// Prépare la file (compression des images) puis lance l'analyse de la 1re facture.
+async function demarrerAnalyse(btn) {
+  if (!selection.length) return;
+  busy(btn, true, "Préparation…");
   try {
-    if (estImage) {
-      fichierCourant = await compresserImage(file);
-      const url = URL.createObjectURL(fichierCourant);
-      $("#apercu-img").src = url;
-      $("#apercu-img").classList.remove("hidden");
-      $("#apercu-pdf").classList.add("hidden");
-    } else {
-      // PDF : pas de compression côté client (resterait un PDF) ; on l'envoie tel quel.
-      if (file.size > 8 * 1024 * 1024) return toast("PDF trop volumineux (> 8 Mo).", "warn");
-      fichierCourant = file;
-      $("#apercu-img").classList.add("hidden");
-      $("#pdf-nom").textContent = file.name;
-      $("#apercu-pdf").classList.remove("hidden");
+    const queue = [];
+    for (const f of selection) {
+      if (f.type.startsWith("image/")) {
+        queue.push({ file: await compresserImage(f), kind: "image" });
+      } else {
+        queue.push({ file: f, kind: "pdf" }); // PDF envoyé tel quel
+      }
     }
-    $("#dz").classList.add("hidden");
-    $("#apercu-zone").classList.remove("hidden");
-
-    $("#btn-refaire").onclick = reset;
-    $("#btn-extraire").onclick = (e) => lancerExtraction(e.currentTarget);
+    resetDraft();
+    draft.queue = queue;
+    draft.index = 0;
+    draft.total = queue.length;
+    await analyserCourant(); // analyse l'élément courant et bascule en vérification
   } catch (e) {
-    toast("Impossible de lire le fichier.", "error");
+    busy(btn, false);
+    toast(e.message || "Préparation impossible.", "error");
   }
 }
 
-function reset() {
-  fichierCourant = null;
-  $("#file-input").value = "";
-  $("#apercu-zone").classList.add("hidden");
-  $("#dz").classList.remove("hidden");
+/* Analyse l'élément courant de la file (draft.queue[draft.index]) :
+   appelle l'IA, renseigne le brouillon et bascule sur l'écran de vérification.
+   Exporté pour être réutilisé par verification.js (passage à la facture suivante). */
+export async function analyserCourant() {
+  const item = draft.queue[draft.index];
+  if (!item) { resetDraft(); navigate("#/factures"); return; }
+
+  // Vue de chargement avec progression pour les lots.
+  const prog = draft.total > 1 ? ` (facture ${draft.index + 1}/${draft.total})` : "";
+  setView(`<div class="loading-block"><span class="spinner dark"></span>
+    <p>Analyse de la facture${prog}…</p></div>`);
+
+  try {
+    const base64 = await toBase64(item.file);
+    const data = await extraireFacture({ base64, mediaType: item.file.type, kind: item.kind });
+
+    draft.data = data;
+    draft.fichier = item.file;
+    draft.apercu = item.kind === "image" ? URL.createObjectURL(item.file) : null;
+
+    navigate("#/verification");
+  } catch (e) {
+    // Échec sur une facture du lot : on propose de réessayer ou de passer.
+    const prog2 = draft.total > 1 ? ` (facture ${draft.index + 1}/${draft.total})` : "";
+    setView(`
+      <h1 class="page-title">Analyse impossible${prog2}</h1>
+      <div class="alert alert-danger">⚠️ ${esc(e.message || "Échec de l'analyse.")}</div>
+      <div class="row" style="gap:10px">
+        <button id="btn-retry" class="btn btn-primary grow">Réessayer</button>
+        ${draft.total > 1 ? `<button id="btn-skip" class="btn btn-secondary grow">Passer cette facture</button>` : ""}
+        <a href="#/capture" class="btn btn-ghost">Annuler</a>
+      </div>`);
+    $("#btn-retry").onclick = () => analyserCourant();
+    const skip = $("#btn-skip");
+    if (skip) skip.onclick = () => { draft.index++; analyserCourant(); };
+  }
 }
 
 // Compression via canvas : redimensionne à MAX_DIM et baisse la qualité
@@ -118,7 +189,7 @@ async function compresserImage(file) {
     q -= 0.1;
     blob = await toBlob(canvas, q);
   }
-  return new File([blob], "facture.jpg", { type: "image/jpeg" });
+  return new File([blob], (file.name || "facture").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
 }
 
 function chargerImage(file) {
@@ -141,24 +212,4 @@ function toBase64(file) {
     r.onerror = reject;
     r.readAsDataURL(file);
   });
-}
-
-async function lancerExtraction(btn) {
-  if (!fichierCourant) return;
-  busy(btn, true, "Analyse IA…");
-  try {
-    const base64 = await toBase64(fichierCourant);
-    const kind = fichierCourant.type.includes("pdf") ? "pdf" : "image";
-    const data = await extraireFacture({ base64, mediaType: fichierCourant.type, kind });
-
-    // Stocke le brouillon et l'original pour l'écran de vérification (étape §5).
-    draft.data = data;
-    draft.fichier = fichierCourant;
-    draft.apercu = kind === "image" ? URL.createObjectURL(fichierCourant) : null;
-
-    navigate("#/verification");
-  } catch (e) {
-    busy(btn, false);
-    toast(e.message || "Échec de l'analyse. Réessayez.", "error", 5000);
-  }
 }

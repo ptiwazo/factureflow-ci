@@ -21,7 +21,16 @@ import * as fournisseurs from "./modules/fournisseurs.js";
 import * as settings     from "./modules/settings.js";
 
 // Brouillon d'extraction partagé entre capture et vérification.
-export const draft = { data: null, fichier: null, apercu: null };
+// Brouillon courant + file d'attente pour l'import multiple.
+//   data/fichier/apercu : facture en cours de vérification
+//   queue : [{ file, kind }] préparés ; index : position courante ; total : nombre initial
+export const draft = { data: null, fichier: null, apercu: null, queue: [], index: 0, total: 0 };
+
+// Réinitialise complètement le brouillon (fin de cycle ou annulation globale).
+export function resetDraft() {
+  draft.data = null; draft.fichier = null; draft.apercu = null;
+  draft.queue = []; draft.index = 0; draft.total = 0;
+}
 
 /* ----------------------------- Routeur ----------------------------- */
 const routes = {
@@ -66,7 +75,12 @@ function marquerOnglet(name) {
   });
 }
 
-export function navigate(hash) { location.hash = hash; }
+export function navigate(hash) {
+  // Si le hash est déjà celui demandé (ex. vérification → vérification suivante
+  // d'un lot), aucun 'hashchange' ne se déclenche : on relance le routeur manuellement.
+  if (location.hash === hash) router();
+  else location.hash = hash;
+}
 
 /* --------------------------- Écran Auth ---------------------------- */
 let modeAuth = "login";

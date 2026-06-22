@@ -9,7 +9,8 @@
 import { $, $$, setView, toast, busy, fcfa, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
 import { CONFIG } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser } from "../store.js";
-import { draft, navigate } from "../app.js";
+import { draft, navigate, resetDraft } from "../app.js";
+import { analyserCourant } from "./capture.js";
 
 // Détermine si un champ (chemin "facture.numero") est marqué incertain par l'IA.
 function estIncertain(d, chemin) {
@@ -37,11 +38,16 @@ export function render() {
 
   const conf = Math.round((d.confiance?.global || 0) * 100);
 
+  const lot = draft.total > 1;
+  const progLabel = lot ? ` ${draft.index + 1}/${draft.total}` : "";
+
   setView(`
     <div class="row between">
-      <h1 class="page-title">Vérification</h1>
-      <a href="#/capture" class="btn btn-ghost btn-sm">Annuler</a>
+      <h1 class="page-title">Vérification${progLabel}</h1>
+      <a href="#/capture" class="btn btn-ghost btn-sm">${lot ? "Arrêter le lot" : "Annuler"}</a>
     </div>
+    ${lot ? `<div class="alert alert-info">📦 Import multiple — facture ${draft.index + 1} sur ${draft.total}.
+      <button id="btn-passer" class="btn btn-ghost btn-sm" style="margin-left:auto">Passer celle-ci</button></div>` : ""}
 
     <div class="card">
       <div class="row between">
@@ -127,6 +133,15 @@ export function render() {
 
   $("#btn-valider").onclick = (e) => enregistrer(e.currentTarget, false);
   $("#btn-non-conforme").onclick = (e) => enregistrer(e.currentTarget, true);
+
+  // Import multiple : passer la facture courante sans l'enregistrer.
+  const passer = $("#btn-passer");
+  if (passer) passer.onclick = () => {
+    draft.data = null; draft.fichier = null; draft.apercu = null;
+    draft.index++;
+    if (draft.index < draft.queue.length) analyserCourant();
+    else { resetDraft(); toast("Lot terminé.", "info"); navigate("#/factures"); }
+  };
 }
 
 // Crée une ligne éditable ; recalcul auto du montant HT = qté × PU.
@@ -239,11 +254,20 @@ async function enregistrer(btn, forcerNonConforme) {
     });
 
     await journaliser(statut === "non_conforme" ? "facture_non_conforme" : "validation", `facture:${facture.id}`);
+    toast(statut === "non_conforme" ? "Enregistrée (non conforme)." : "Facture validée ✔", "success");
 
-    // Nettoyage du brouillon.
+    // Données de la facture courante traitées : on les nettoie.
     draft.data = null; draft.fichier = null; draft.apercu = null;
 
-    toast(statut === "non_conforme" ? "Enregistrée (non conforme)." : "Facture validée ✔", "success");
+    // Import multiple : enchaîner sur la facture suivante de la file.
+    draft.index++;
+    if (draft.index < draft.queue.length) {
+      await analyserCourant();   // analyse la suivante → revient en vérification
+      return;
+    }
+
+    // Fin du lot (ou facture unique).
+    resetDraft();
     navigate(`#/facture/${facture.id}`);
   } catch (e) {
     busy(btn, false);
