@@ -9,7 +9,8 @@
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
-import { exporterCSV, exporterExcel, exporterSAP, getParamsSAP, setParamsSAP } from "./export.js";
+import { exporterCSV, exporterExcel, exporterSAP, getParamsSAP, setParamsSAP, getComptesCharge, setComptesCharge } from "./export.js";
+import { CATEGORIES_CHARGE } from "../config.js";
 
 export async function render() {
   const p = getProfil();
@@ -71,6 +72,24 @@ export async function render() {
       <button id="sap-save" class="btn btn-primary btn-sm">Enregistrer les comptes</button>
     </div>
 
+    <div class="card">
+      <h3>Comptes de charge par catégorie (IFRS)</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        L'IA classe chaque ligne de facture par <strong>nature (IFRS / IAS 1)</strong>.
+        Associez chaque catégorie à <strong>votre numéro de compte</strong> : il sera proposé
+        automatiquement par ligne et utilisé dans l'export FI. ⚠️ Numéros à valider par votre expert-comptable.
+        À défaut, le compte de charge par défaut ci-dessus est utilisé.
+      </p>
+      <div id="map-charge">
+        ${CATEGORIES_CHARGE.map((c) => `
+          <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
+            <span class="grow" style="font-size:.9rem">${c.label}</span>
+            <input data-cat="${c.code}" style="max-width:140px" placeholder="N° compte" />
+          </div>`).join("")}
+      </div>
+      <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
+    </div>
+
     ${estAdmin ? `<div class="card">
       <h3>Utilisateurs</h3>
       <div id="users"><span class="spinner dark"></span></div>
@@ -108,6 +127,19 @@ export async function render() {
       codeTva: $("#sap-codetva").value.trim(),
     });
     toast("Comptes SAP enregistrés.", "success");
+  };
+
+  // --- Mapping catégorie → compte de charge ---
+  const mapCharge = getComptesCharge();
+  $$("#map-charge input[data-cat]").forEach((inp) => { inp.value = mapCharge[inp.dataset.cat] || ""; });
+  $("#charge-save").onclick = () => {
+    const map = {};
+    $$("#map-charge input[data-cat]").forEach((inp) => {
+      const v = inp.value.trim();
+      if (v) map[inp.dataset.cat] = v;
+    });
+    setComptesCharge(map);
+    toast("Mapping des comptes de charge enregistré.", "success");
   };
 
   // --- Utilisateurs (admin) ---

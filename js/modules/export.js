@@ -99,6 +99,25 @@ export function setParamsSAP(p) {
   localStorage.setItem(`${CLE_SAP}:${org}`, JSON.stringify({ ...PARAMS_SAP_DEFAUT, ...p }));
 }
 
+// Mapping catégorie de charge (IFRS) → numéro de compte, propre à chaque org.
+// L'utilisateur le renseigne dans Réglages (l'app n'invente aucun numéro).
+const CLE_COMPTES = "ff_comptes_charge";
+export function getComptesCharge() {
+  const org = getProfil()?.org_id || "default";
+  try { return JSON.parse(localStorage.getItem(`${CLE_COMPTES}:${org}`)) || {}; }
+  catch { return {}; }
+}
+export function setComptesCharge(map) {
+  const org = getProfil()?.org_id || "default";
+  localStorage.setItem(`${CLE_COMPTES}:${org}`, JSON.stringify(map || {}));
+}
+// Compte de charge proposé pour une catégorie : mapping de l'org, sinon
+// le compte de charge par défaut des paramètres SAP.
+export function comptePourCategorie(categorie) {
+  const map = getComptesCharge();
+  return (map[categorie] || "").trim() || (getParamsSAP().compteCharge || "").trim();
+}
+
 const COLS_SAP = [
   "NumPiece", "TypePiece", "DatePiece", "DateCompta", "Societe", "Devise",
   "Reference", "CleCompta", "Compte", "Tiers", "Montant", "CodeTVA", "Texte",
@@ -151,11 +170,13 @@ export async function exporterSAP(factures) {
 
     const base = [piece, c.typePiece, datePiece, datePiece, c.societe, devise, ref];
 
-    // Débit charge : une ligne par article, Texte = sa désignation.
+    // Débit charge : une ligne par article, Texte = sa désignation, compte
+    // proposé selon la catégorie IFRS de la ligne (sinon compte par défaut).
     if (articles.length) {
       for (const a of articles) {
         const tauxL = a.taux_tva != null ? a.taux_tva : (f.taux_tva ?? "");
-        lignes.push([...base, "40", c.compteCharge, "", num(a.montant_ht),
+        const compteL = comptePourCategorie(a.categorie) || c.compteCharge;
+        lignes.push([...base, "40", compteL, "", num(a.montant_ht),
           tauxL !== "" ? c.codeTva : "", a.designation || nomFourn]);
       }
     } else {

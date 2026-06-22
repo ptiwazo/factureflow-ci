@@ -8,7 +8,11 @@ import {
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
+import { CATEGORIES_CHARGE } from "../config.js";
 import { navigate } from "../app.js";
+
+// Code de catégorie → libellé lisible.
+const LIBELLE_CATEGORIE = Object.fromEntries(CATEGORIES_CHARGE.map((c) => [c.code, c.label]));
 
 const FILTRES = [
   { key: "", label: "Toutes" },
@@ -109,14 +113,15 @@ export async function renderDetail(id) {
     <div class="card">
       <h3>Lignes</h3>
       <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th></tr></thead>
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Catégorie</th></tr></thead>
         <tbody>
           ${lignes.map((l) => `<tr>
             <td class="col-des">${esc(l.designation)}</td>
             <td>${l.quantite}</td>
             <td>${fcfa(l.prix_unitaire, f.devise)}</td>
             <td>${fcfa(l.montant_ht, f.devise)}</td>
-            <td>${l.taux_tva != null ? l.taux_tva : f.taux_tva}%</td></tr>`).join("") || `<tr><td colspan="5" class="muted">Aucune ligne</td></tr>`}
+            <td>${l.taux_tva != null ? l.taux_tva : f.taux_tva}%</td>
+            <td>${esc(LIBELLE_CATEGORIE[l.categorie] || "—")}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucune ligne</td></tr>`}
         </tbody>
       </table>
       <div class="totaux-box">

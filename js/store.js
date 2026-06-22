@@ -185,6 +185,7 @@ export async function creerFactureComplete({ entete, lignes, fichier, extraction
       prix_unitaire: l.prix_unitaire || 0,
       montant_ht: l.montant_ht || 0,
       taux_tva: l.taux_tva != null ? l.taux_tva : CONFIG.TVA_DEFAUT,
+      categorie: l.categorie || null,
     }));
     const { error: errL } = await supabase.from("lignes").insert(rows);
     if (errL) throw errL;

@@ -7,10 +7,15 @@
    explicite de l'utilisateur — aucune validation silencieuse de montants.
 ===================================================================== */
 import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
-import { CONFIG } from "../config.js";
+import { CONFIG, CATEGORIES_CHARGE, CATEGORIE_DEFAUT } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
+import { comptePourCategorie } from "./export.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
+
+// <option> des catégories de charge (IFRS), réutilisé par chaque ligne.
+const OPTIONS_CATEGORIE = CATEGORIES_CHARGE
+  .map((c) => `<option value="${c.code}">${esc(c.label)}</option>`).join("");
 
 // Détermine si un champ (chemin "facture.numero") est marqué incertain par l'IA.
 function estIncertain(d, chemin) {
@@ -90,10 +95,16 @@ export function render() {
         <h3>Lignes</h3>
         <button id="add-ligne" class="btn btn-secondary btn-sm">+ Ligne</button>
       </div>
+      <div style="overflow-x:auto">
       <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th></th></tr></thead>
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Catégorie (IFRS)</th><th>Compte</th><th></th></tr></thead>
         <tbody id="lignes-body"></tbody>
       </table>
+      </div>
+      <p class="muted" style="font-size:.76rem;margin-top:.5rem">
+        Catégorie de charge proposée par l'IA (classification IFRS par nature). Le
+        <strong>compte</strong> provient du mapping défini dans Réglages — ⚠️ numéros à valider par un expert-comptable.
+      </p>
     </div>
 
     <div class="card">
@@ -150,6 +161,7 @@ function ligneRow(l) {
   const tauxDefaut = toNumber($("#taux-tva")?.value) || CONFIG.TVA_DEFAUT;
   const tauxLigne = l.taux_tva != null && l.taux_tva !== "" ? toNumber(l.taux_tva) : tauxDefaut;
 
+  const cat = l.categorie || CATEGORIE_DEFAUT;
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td class="col-des"><input class="l-des" type="text" value="${(l.designation || "").replace(/"/g, "&quot;")}" /></td>
@@ -157,14 +169,27 @@ function ligneRow(l) {
     <td><input class="l-pu" type="number" step="0.01" value="${l.prix_unitaire || 0}" style="width:86px" /></td>
     <td><input class="l-ht" type="number" step="0.01" value="${l.montant_ht || 0}" style="width:96px" /></td>
     <td><input class="l-tva" type="number" step="0.01" value="${tauxLigne}" style="width:56px" /></td>
+    <td><select class="l-cat" style="min-width:150px">${OPTIONS_CATEGORIE}</select></td>
+    <td><span class="l-compte muted" style="white-space:nowrap"></span></td>
     <td><button class="icon-btn l-del" style="color:var(--danger)" title="Supprimer">✕</button></td>`;
 
   const qte = tr.querySelector(".l-qte");
   const pu = tr.querySelector(".l-pu");
   const ht = tr.querySelector(".l-ht");
   const tva = tr.querySelector(".l-tva");
-  let htEditeManuellement = false;
+  const sel = tr.querySelector(".l-cat");
+  const compte = tr.querySelector(".l-compte");
+  sel.value = cat;
 
+  // Affiche le compte de charge proposé pour la catégorie courante.
+  const majCompte = () => {
+    const c = comptePourCategorie(sel.value);
+    compte.textContent = c || "à mapper";
+    compte.style.color = c ? "var(--teal)" : "var(--danger)";
+  };
+  majCompte();
+
+  let htEditeManuellement = false;
   const autoHt = () => {
     if (htEditeManuellement) return;
     ht.value = (toNumber(qte.value) * toNumber(pu.value)).toFixed(2);
@@ -174,6 +199,7 @@ function ligneRow(l) {
   pu.addEventListener("input", autoHt);
   ht.addEventListener("input", () => { htEditeManuellement = true; recalculer(); });
   tva.addEventListener("input", recalculer);
+  sel.addEventListener("change", majCompte);
   tr.querySelector(".l-del").addEventListener("click", () => { tr.remove(); recalculer(); });
 
   return tr;
@@ -186,6 +212,7 @@ function lireLignes() {
     prix_unitaire: toNumber(tr.querySelector(".l-pu").value),
     montant_ht: toNumber(tr.querySelector(".l-ht").value),
     taux_tva: toNumber(tr.querySelector(".l-tva").value),
+    categorie: tr.querySelector(".l-cat").value,
   })).filter((l) => l.designation || l.montant_ht);
 }
 

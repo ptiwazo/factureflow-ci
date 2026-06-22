@@ -6,9 +6,11 @@
    ci-dessous (schéma strict, cf. CLAUDE.md §7). Aucune clé ici : le JWT
    Supabase est joint en Bearer pour authentifier l'appel.
 ===================================================================== */
-import { CONFIG } from "./config.js";
+import { CONFIG, CATEGORIES_CHARGE, CATEGORIE_DEFAUT } from "./config.js";
 import { getAccessToken } from "./auth.js";
 import { calculerTotaux } from "./ui.js";
+
+const CODES_CATEGORIE = CATEGORIES_CHARGE.map((c) => c.code);
 
 // Outil tool_use : force Claude à répondre par un JSON conforme au schéma §7.
 const OUTIL_EXTRACTION = {
@@ -47,8 +49,13 @@ const OUTIL_EXTRACTION = {
             prix_unitaire: { type: "number" },
             montant_ht: { type: "number" },
             taux_tva: { type: "number", description: "Taux de TVA de la ligne en %, 18 par défaut en CI ; 0 si exonérée." },
+            categorie: {
+              type: "string",
+              enum: CODES_CATEGORIE,
+              description: "Catégorie de charge par nature (classification IFRS / IAS 1) la plus probable pour cette ligne.",
+            },
           },
-          required: ["designation", "quantite", "prix_unitaire", "montant_ht", "taux_tva"],
+          required: ["designation", "quantite", "prix_unitaire", "montant_ht", "taux_tva", "categorie"],
         },
       },
       totaux: {
@@ -85,6 +92,8 @@ Règles :
 - NCC = Numéro de Compte Contribuable du fournisseur ; laisse vide si introuvable.
 - Dates au format AAAA-MM-JJ ; laisse vide si illisible plutôt que de deviner.
 - Reporte précisément les lignes (désignation, quantité, prix unitaire, montant HT).
+- Pour chaque ligne, choisis la "categorie" de charge par nature (classification IFRS / IAS 1)
+  la plus probable d'après la désignation ; utilise "autres" en cas de doute.
 - Dans champs_incertains, liste tout champ que tu n'as pas pu lire avec certitude
   (photo floue, manuscrit, ambiguïté) en utilisant des chemins comme "facture.date".
 N'écris aucun texte hors de l'appel d'outil.`;
@@ -185,6 +194,8 @@ function normaliser(raw = {}) {
       // Taux de TVA de la ligne : repli sur le taux global puis 18 % (CI).
       taux_tva: l.taux_tva != null ? Number(l.taux_tva)
         : (raw.totaux?.taux_tva != null ? Number(raw.totaux.taux_tva) : CONFIG.TVA_DEFAUT),
+      // Catégorie de charge (IFRS par nature) ; repli "autres" si inconnue.
+      categorie: CODES_CATEGORIE.includes(l.categorie) ? l.categorie : CATEGORIE_DEFAUT,
     })) : [],
     totaux: {
       total_ht: Number(raw.totaux?.total_ht) || 0,

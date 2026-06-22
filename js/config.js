@@ -36,3 +36,27 @@ export const CONFIG = {
   // Seuil en-dessous duquel un champ est considéré « incertain ».
   SEUIL_CONFIANCE: 0.75,
 };
+
+// Catégories de charge par NATURE (classification IFRS / IAS 1.102).
+// ⚠️ IFRS ne définit pas de numéros de comptes : ces catégories servent à
+// classer chaque ligne ; le numéro de compte réel est mappé par l'utilisateur
+// dans Réglages (à valider par un expert-comptable).
+export const CATEGORIES_CHARGE = [
+  { code: "marchandises",   label: "Achats de marchandises" },
+  { code: "matieres",       label: "Matières premières & consommables" },
+  { code: "fournitures",    label: "Fournitures & petit matériel" },
+  { code: "services",       label: "Services extérieurs (honoraires, sous-traitance)" },
+  { code: "entretien",      label: "Entretien & réparations" },
+  { code: "loyers",         label: "Loyers & charges locatives" },
+  { code: "transport",      label: "Transport & logistique" },
+  { code: "deplacements",   label: "Déplacements & missions" },
+  { code: "energie",        label: "Énergie & fluides (eau, électricité, carburant)" },
+  { code: "telecom",        label: "Télécoms & internet" },
+  { code: "assurances",     label: "Assurances" },
+  { code: "publicite",      label: "Publicité & marketing" },
+  { code: "impots",         label: "Impôts & taxes" },
+  { code: "immobilisation", label: "Immobilisation (à capitaliser, non charge)" },
+  { code: "autres",         label: "Autres charges" },
+];
+export const CATEGORIE_DEFAUT = "autres";
+
