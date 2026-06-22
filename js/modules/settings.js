@@ -9,7 +9,7 @@
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
-import { exporterCSV, exporterExcel, exporterSAP, getParamsSAP, setParamsSAP, getComptesCharge, setComptesCharge } from "./export.js";
+import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage, getComptesCharge, setComptesCharge } from "./export.js";
 import { CATEGORIES_GROUPES } from "../config.js";
 
 export async function render() {
@@ -42,8 +42,9 @@ export async function render() {
         <div class="grow field"><label for="ex-fin">Au</label><input id="ex-fin" type="date" value="${isoFin}" /></div>
       </div>
       <div class="row wrap" style="gap:10px">
-        <button id="ex-csv" class="btn btn-primary grow">⬇ CSV (Sage)</button>
+        <button id="ex-csv" class="btn btn-primary grow">⬇ CSV (tableur)</button>
         <button id="ex-xls" class="btn btn-secondary grow">⬇ Excel</button>
+        <button id="ex-sage" class="btn btn-secondary grow">⬇ Sage (écritures)</button>
         <button id="ex-sap" class="btn btn-secondary grow">⬇ SAP (écritures FI)</button>
       </div>
       <label class="row" style="gap:8px;margin-top:12px;font-size:.85rem">
@@ -51,6 +52,24 @@ export async function render() {
         Marquer les factures exportées comme « exportée »
       </label>
       <p id="ex-info" class="muted" style="font-size:.82rem"></p>
+    </div>
+
+    <div class="card">
+      <h3>Paramètres comptables Sage</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Pour l'export d'écritures Sage (partie double). Le compte de charge par
+        ligne provient du mapping IFRS ci-dessous (repli sur le compte par défaut).
+        ⚠️ Comptes (SYSCOHADA) et journal à valider avec votre expert-comptable.
+      </p>
+      <div class="row" style="gap:12px">
+        <div class="grow field"><label for="sg-journal">Journal des achats</label><input id="sg-journal" placeholder="Ex. ACH" /></div>
+        <div class="grow field"><label for="sg-charge">Compte de charge par défaut</label><input id="sg-charge" placeholder="Ex. 601000" /></div>
+      </div>
+      <div class="row" style="gap:12px">
+        <div class="grow field"><label for="sg-tva">Compte TVA déductible</label><input id="sg-tva" placeholder="Ex. 445200" /></div>
+        <div class="grow field"><label for="sg-fourn">Compte fournisseur collectif</label><input id="sg-fourn" placeholder="Ex. 401000" /></div>
+      </div>
+      <button id="sg-save" class="btn btn-primary btn-sm">Enregistrer les comptes Sage</button>
     </div>
 
     <div class="card">
@@ -111,7 +130,24 @@ export async function render() {
   // --- Export ---
   $("#ex-csv").onclick = (e) => lancerExport(e.currentTarget, "csv");
   $("#ex-xls").onclick = (e) => lancerExport(e.currentTarget, "xls");
+  $("#ex-sage").onclick = (e) => lancerExport(e.currentTarget, "sage");
   $("#ex-sap").onclick = (e) => lancerExport(e.currentTarget, "sap");
+
+  // --- Paramètres comptables Sage ---
+  const sage = getParamsSage();
+  $("#sg-journal").value = sage.journalAchats;
+  $("#sg-charge").value = sage.compteChargeDefaut;
+  $("#sg-tva").value = sage.compteTva;
+  $("#sg-fourn").value = sage.compteFournisseur;
+  $("#sg-save").onclick = () => {
+    setParamsSage({
+      journalAchats: $("#sg-journal").value.trim() || "ACH",
+      compteChargeDefaut: $("#sg-charge").value.trim(),
+      compteTva: $("#sg-tva").value.trim(),
+      compteFournisseur: $("#sg-fourn").value.trim(),
+    });
+    toast("Comptes Sage enregistrés.", "success");
+  };
 
   // --- Paramètres comptables SAP ---
   const sap = getParamsSAP();
@@ -168,6 +204,7 @@ async function lancerExport(btn, format) {
     }
     if (format === "csv") await exporterCSV(exportables);
     else if (format === "sap") await exporterSAP(exportables);
+    else if (format === "sage") await exporterSageEcritures(exportables);
     else await exporterExcel(exportables);
 
     // Marquage optionnel "exportée".

@@ -112,10 +112,87 @@ export function setComptesCharge(map) {
   localStorage.setItem(`${CLE_COMPTES}:${org}`, JSON.stringify(map || {}));
 }
 // Compte de charge proposé pour une catégorie : mapping de l'org, sinon
-// le compte de charge par défaut des paramètres SAP.
-export function comptePourCategorie(categorie) {
+// un compte par défaut (paramètre SAP par défaut, ou `fallback` fourni).
+export function comptePourCategorie(categorie, fallback) {
   const map = getComptesCharge();
-  return (map[categorie] || "").trim() || (getParamsSAP().compteCharge || "").trim();
+  const def = (fallback != null ? fallback : getParamsSAP().compteCharge) || "";
+  return (map[categorie] || "").trim() || String(def).trim();
+}
+
+/* ----------------------- Paramètres comptables Sage ---------------- */
+// Sage (contexte SYSCOHADA en CI). Le mapping catégorie → compte de charge
+// (getComptesCharge) est partagé ; ici on définit le journal, les comptes TVA
+// et fournisseur collectif, et un compte de charge par défaut Sage.
+const CLE_SAGE = "ff_sage_compta";
+const PARAMS_SAGE_DEFAUT = {
+  journalAchats: "ACH",     // Code journal des achats
+  compteChargeDefaut: "",   // Compte de charge par défaut (si catégorie non mappée)
+  compteTva: "",            // Compte TVA déductible
+  compteFournisseur: "",    // Compte fournisseur collectif (ex. 401...)
+};
+export function getParamsSage() {
+  const org = getProfil()?.org_id || "default";
+  try { return { ...PARAMS_SAGE_DEFAUT, ...(JSON.parse(localStorage.getItem(`${CLE_SAGE}:${org}`)) || {}) }; }
+  catch { return { ...PARAMS_SAGE_DEFAUT }; }
+}
+export function setParamsSage(p) {
+  const org = getProfil()?.org_id || "default";
+  localStorage.setItem(`${CLE_SAGE}:${org}`, JSON.stringify({ ...PARAMS_SAGE_DEFAUT, ...p }));
+}
+
+const COLS_SAGE = ["Journal", "Date", "NumPiece", "Compte", "CompteTiers", "Libelle", "Debit", "Credit", "CodeTVA"];
+
+// Export d'écritures Sage en partie double (Débit/Crédit), une ligne de charge
+// par article (compte = mapping catégorie IFRS), TVA déductible, crédit fournisseur.
+export async function exporterSageEcritures(factures) {
+  const p = getParamsSage();
+  if (!p.compteFournisseur) {
+    throw new Error("Configurez le compte fournisseur collectif Sage dans Réglages → Paramètres comptables Sage.");
+  }
+
+  const sep = ";";
+  const num = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+  const echappe = (v) => {
+    const s = String(v ?? "");
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const out = [];
+  let piece = 1;
+  for (const f of factures) {
+    const date = f.date || "";
+    const ref = f.numero || String(piece);
+    const nomFourn = f.fournisseurs?.nom || "";
+    const tiers = (f.fournisseurs?.compte_sap || "").trim() || f.fournisseurs?.ncc || "";
+    const tva = Number(f.montant_tva) || 0;
+    const ttc = Number(f.total_ttc) || 0;
+    const codeTva = ""; // Sage gère la TVA par le compte ; laissé vide par défaut
+
+    let articles = [];
+    try { articles = await getLignes(f.id); } catch { articles = []; }
+    const base = [p.journalAchats, date, ref];
+
+    // Débit charge : une ligne par article (compte selon catégorie IFRS).
+    if (articles.length) {
+      for (const a of articles) {
+        const compte = comptePourCategorie(a.categorie, p.compteChargeDefaut);
+        out.push([...base, compte, "", a.designation || nomFourn, num(a.montant_ht), "0.00", codeTva]);
+      }
+    } else {
+      out.push([...base, p.compteChargeDefaut, "", nomFourn, num(f.total_ht), "0.00", codeTva]);
+    }
+    // Débit TVA déductible.
+    if (tva > 0 && p.compteTva) {
+      out.push([...base, p.compteTva, "", "TVA deductible", num(tva), "0.00", codeTva]);
+    }
+    // Crédit fournisseur (compte collectif + compte tiers auxiliaire).
+    out.push([...base, p.compteFournisseur, tiers, nomFourn, "0.00", num(ttc), ""]);
+    piece++;
+  }
+
+  const contenu = "﻿" + [COLS_SAGE.join(sep), ...out.map((r) => r.map(echappe).join(sep))].join("\r\n");
+  telecharger(contenu, `sage_ecritures_${horodatage()}.csv`, "text/csv;charset=utf-8");
+  await journaliser("export_sage_ecritures", `${factures.length} factures`);
 }
 
 const COLS_SAP = [
