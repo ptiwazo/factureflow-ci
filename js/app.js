@@ -110,7 +110,17 @@ function initAuthUI() {
         const orgNom = $("#org-nom").value.trim();
         const orgNcc = $("#org-ncc").value.trim();
         if (!orgNom) throw new Error("Indiquez le nom de votre entreprise.");
-        await inscription(email, password, orgNom, orgNcc);
+        const res = await inscription(email, password, orgNom, orgNcc);
+        if (res.needConfirmation) {
+          // Pas de session : Supabase exige la confirmation par e-mail.
+          modeAuth = "login";
+          $$("[data-auth-tab]").forEach((b) => b.classList.toggle("active", b.dataset.authTab === "login"));
+          $$(".signup-only").forEach((el) => el.classList.add("hidden"));
+          $("#auth-submit").textContent = "Se connecter";
+          errBox.textContent = "";
+          toast("Compte créé. Confirmez votre e-mail (lien reçu), puis connectez-vous.", "success", 6000);
+          return; // on ne tente pas d'ouvrir une session inexistante
+        }
         toast("Compte créé. Bienvenue !", "success");
       } else {
         await connexion(email, password);

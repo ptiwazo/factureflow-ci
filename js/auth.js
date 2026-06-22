@@ -43,7 +43,8 @@ export async function inscription(email, password, orgNom, orgNcc) {
     });
     if (rpcErr) throw new Error("Compte créé mais organisation non initialisée : " + rpcErr.message);
   }
-  return data.user;
+  // needConfirmation = pas de session après inscription (confirmation e-mail exigée).
+  return { user: data.user, session: sess?.session || null, needConfirmation: !sess?.session };
 }
 
 export async function deconnexion() {
@@ -104,7 +105,10 @@ export function onAuthChange(callback) {
 function traduireErreur(msg = "") {
   const m = msg.toLowerCase();
   if (m.includes("invalid login")) return "E-mail ou mot de passe incorrect.";
+  if (m.includes("email not confirmed")) return "E-mail non confirmé. Cliquez le lien reçu par e-mail, puis connectez-vous.";
   if (m.includes("already registered")) return "Cet e-mail est déjà utilisé.";
+  if (m.includes("signups not allowed") || m.includes("signup is disabled"))
+    return "Les inscriptions sont désactivées sur le projet Supabase (à activer dans Authentication).";
   if (m.includes("password")) return "Mot de passe trop court (6 caractères minimum).";
   if (m.includes("email")) return "Adresse e-mail invalide.";
   return msg || "Une erreur est survenue.";
