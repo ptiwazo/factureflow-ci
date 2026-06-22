@@ -6,7 +6,7 @@
    Le support offline complet des données est prévu en Phase 3 ; ici on
    ne met JAMAIS en cache les appels Supabase ni le proxy IA.
 ===================================================================== */
-const CACHE = "factureflow-ci-v1";
+const CACHE = "factureflow-ci-v2";
 
 // Shell statique. (Les modules JS sont chargés dynamiquement ; on met en
 // cache l'essentiel et on laisse le réseau gérer le reste avec repli cache.)
@@ -50,17 +50,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Assets statiques : cache d'abord, puis réseau (et mise en cache au passage).
+  // Assets de l'app : RÉSEAU D'ABORD (les nouveaux déploiements gagnent
+  // toujours quand on est en ligne), avec mise en cache pour le repli hors-ligne.
+  // Cache-first était problématique : il figeait l'app sur une vieille version.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        if (res && res.status === 200 && res.type === "basic") {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
-    })
+    fetch(req).then((res) => {
+      if (res && res.status === 200 && res.type === "basic") {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req)) // hors-ligne → dernière version connue
   );
 });
