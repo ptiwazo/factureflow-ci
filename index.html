@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0F766E" />
+  <meta name="description" content="FactureFlow CI — Automatisation des factures fournisseurs pour PME ivoiriennes." />
+  <title>FactureFlow CI</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- ============================ AUTH ============================ -->
+  <!-- Écran de connexion / inscription, affiché tant qu'aucune session. -->
+  <section id="auth-screen" class="auth hidden" aria-hidden="true">
+    <div class="auth-card">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="48" height="48" />
+        <h1>FactureFlow <span>CI</span></h1>
+      </div>
+      <p class="auth-tagline">Vos factures fournisseurs, saisies en quelques secondes.</p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-auth-tab="login" role="tab">Connexion</button>
+        <button class="tab" data-auth-tab="signup" role="tab">Créer un compte</button>
+      </div>
+
+      <form id="auth-form" autocomplete="on" novalidate>
+        <!-- Champs d'inscription uniquement -->
+        <div class="signup-only field hidden">
+          <label for="org-nom">Nom de l'entreprise</label>
+          <input id="org-nom" name="org-nom" type="text" placeholder="Ex. Établissements Kouassi" />
+        </div>
+        <div class="signup-only field hidden">
+          <label for="org-ncc">NCC de l'entreprise <small>(facultatif)</small></label>
+          <input id="org-ncc" name="org-ncc" type="text" placeholder="Numéro de Compte Contribuable" />
+        </div>
+
+        <div class="field">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" required placeholder="vous@entreprise.ci" />
+        </div>
+        <div class="field">
+          <label for="password">Mot de passe</label>
+          <input id="password" name="password" type="password" required minlength="6" placeholder="••••••••" />
+        </div>
+
+        <button id="auth-submit" class="btn btn-primary btn-block" type="submit">Se connecter</button>
+        <p id="auth-error" class="form-error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============================ APP ============================= -->
+  <div id="app-shell" class="app hidden" aria-hidden="true">
+    <!-- En-tête -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <img src="icons/icon.svg" alt="" width="28" height="28" />
+        <strong>FactureFlow <span class="accent">CI</span></strong>
+      </div>
+      <div class="topbar-right">
+        <span id="org-badge" class="badge" title="Organisation"></span>
+        <button id="btn-logout" class="icon-btn" title="Déconnexion" aria-label="Déconnexion">⎋</button>
+      </div>
+    </header>
+
+    <!-- Conteneur de vue (rempli par le routeur) -->
+    <main id="view" class="view" tabindex="-1"></main>
+
+    <!-- Barre de navigation inférieure (mobile-first) -->
+    <nav class="tabbar" aria-label="Navigation principale">
+      <a href="#/dashboard"   class="tabbar-item" data-route="dashboard">📊<span>Tableau</span></a>
+      <a href="#/factures"    class="tabbar-item" data-route="factures">📄<span>Factures</span></a>
+      <a href="#/capture"     class="tabbar-item tabbar-fab" data-route="capture" aria-label="Nouvelle facture">＋</a>
+      <a href="#/fournisseurs" class="tabbar-item" data-route="fournisseurs">🏢<span>Fourniss.</span></a>
+      <a href="#/settings"    class="tabbar-item" data-route="settings">⚙️<span>Réglages</span></a>
+    </nav>
+  </div>
+
+  <!-- Toaster (notifications) -->
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+  <!-- Boot : chargé en module ES -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+/* =====================================================================
+   FactureFlow CI — Proxy IA sécurisé (Netlify Function)
+   ---------------------------------------------------------------------
+   Détient ANTHROPIC_API_KEY (variable d'env Netlify) et relaie vers
+   l'API Anthropic en VISION + TOOL_USE. La clé n'est jamais exposée au
+   navigateur.
+
+   Sécurité (cf. CLAUDE.md §10) :
+     1. Filtrage par ORIGINE (CORS) ;
+     2. Vérification du JWT Supabase de l'utilisateur : le token Bearer
+        envoyé par le client est validé auprès de Supabase Auth
+        (GET /auth/v1/user). Tout appel non authentifié est rejeté
+        → protège la clé Anthropic contre l'abus.
+
+   Variables d'environnement Netlify requises :
+     - ANTHROPIC_API_KEY   = sk-ant-...
+     - SUPABASE_URL        = https://<projet>.supabase.co
+     - SUPABASE_ANON_KEY   = clé anon publique (sert d'apikey pour /auth/v1/user)
+     - ALLOWED_ORIGINS     = "https://votre-site.netlify.app,http://localhost:8888"
+
+   Déploiement :
+     netlify env:set ANTHROPIC_API_KEY "sk-ant-..."
+     netlify deploy --prod
+   URL obtenue (à reporter dans js/config.js → AI_PROXY_URL) :
+     https://VOTRE-SITE.netlify.app/.netlify/functions/ai-proxy
+===================================================================== */
+
+const DEFAULT_MODEL  = "claude-sonnet-4-6";   // modèle par défaut (CLAUDE.md §3)
+const FALLBACK_MODEL = "claude-opus-4-8";     // repli factures complexes
+const MAX_TOKENS_CAP = 4000;                  // factures à nombreuses lignes
+
+// Origines autorisées : configurables via env, repli sur le site de prod + localhost.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
+  "https://factureflow-ci.netlify.app,http://localhost:8888,http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function corsHeaders(origin) {
+  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
+  };
+}
+
+// Vérifie le JWT Supabase. Renvoie l'utilisateur si valide, sinon null.
+async function verifierJwtSupabase(authHeader) {
+  const token = (authHeader || "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const url = process.env.SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY;
+  if (!url || !anon) return null; // mauvaise config serveur → on refuse par sécurité
+  try {
+    const res = await fetch(`${url}/auth/v1/user`, {
+      headers: { apikey: anon, Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const user = await res.json();
+    return user && user.id ? user : null;
+  } catch {
+    return null;
+  }
+}
+
+exports.handler = async (event) => {
+  const origin = event.headers.origin || event.headers.Origin || "";
+  const cors = corsHeaders(origin);
+
+  if (event.httpMethod === "OPTIONS") return { statusCode: 204, headers: cors, body: "" };
+  if (event.httpMethod !== "POST")
+    return { statusCode: 405, headers: cors, body: JSON.stringify({ error: "Méthode non autorisée" }) };
+
+  // 1) Refuser les origines inconnues.
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    return { statusCode: 403, headers: cors, body: JSON.stringify({ error: "Origine non autorisée" }) };
+  }
+
+  // 2) Vérifier le JWT Supabase.
+  const auth = event.headers.authorization || event.headers.Authorization || "";
+  const user = await verifierJwtSupabase(auth);
+  if (!user) {
+    return { statusCode: 401, headers: cors, body: JSON.stringify({ error: "Authentification requise" }) };
+  }
+
+  try {
+    const body = JSON.parse(event.body || "{}");
+    const { system, messages, model, max_tokens, tools, tool_choice } = body;
+
+    if (!Array.isArray(messages) || !messages.length) {
+      return { statusCode: 400, headers: cors, body: JSON.stringify({ error: "messages requis" }) };
+    }
+
+    // N'autoriser que les deux modèles prévus.
+    const chosenModel = model === FALLBACK_MODEL ? FALLBACK_MODEL : DEFAULT_MODEL;
+
+    const payload = {
+      model: chosenModel,
+      max_tokens: Math.min(Number(max_tokens) || MAX_TOKENS_CAP, MAX_TOKENS_CAP),
+      messages,
+    };
+    if (system) payload.system = system;
+    if (Array.isArray(tools) && tools.length) payload.tools = tools;
+    if (tool_choice) payload.tool_choice = tool_choice;
+
+    const apiRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await apiRes.json();
+    return { statusCode: apiRes.status, headers: cors, body: JSON.stringify(data) };
+  } catch (e) {
+    return { statusCode: 502, headers: cors, body: JSON.stringify({ error: "Erreur du proxy IA" }) };
+  }
+};

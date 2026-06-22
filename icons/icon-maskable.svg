@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FactureFlow CI">
+  <rect width="512" height="512" fill="#0F766E"/>
+  <g fill="none" stroke="#fff" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M196 156h112l48 48v176a14 14 0 0 1-14 14H196a14 14 0 0 1-14-14V170a14 14 0 0 1 14-14z"/>
+    <path d="M308 156v48h48"/>
+    <path d="M214 264h116M214 304h116M214 344h72"/>
+  </g>
+  <circle cx="340" cy="350" r="50" fill="#F59E0B"/>
+  <path d="M320 350l14 14 26-28" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

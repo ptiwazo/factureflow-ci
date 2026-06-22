@@ -1,0 +1,20 @@
+# Dépendances / build
+node_modules/
+.netlify/
+dist/
+
+# Secrets locaux (ne jamais committer de clés)
+.env
+.env.*
+
+# Artefacts locaux
+*.zip
+verifier.ps1
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Dossier de copie local (ne pas versionner)
+deployer/
