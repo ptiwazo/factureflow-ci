@@ -10,6 +10,7 @@
 ===================================================================== */
 import { fcfa, dateFr, esc } from "../ui.js";
 import { journaliser } from "../store.js";
+import { getProfil } from "../auth.js";
 
 // En-têtes du relevé comptable.
 const COLS = [
@@ -70,6 +71,85 @@ export async function exporterExcel(factures) {
     <body><table border="1"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
   telecharger("﻿" + html, `factureflow_${horodatage()}.xls`, "application/vnd.ms-excel");
   await journaliser("export_excel", `${factures.length} factures`);
+}
+
+/* ------------------------- SAP — écritures FI ---------------------- */
+// Paramètres comptables (comptes GL, société, code TVA…). Stockés localement
+// par organisation. ⚠️ Le plan comptable et les codes relèvent de votre
+// configuration SAP / expert-comptable : l'app ne les invente pas.
+const CLE_SAP = "ff_sap_compta";
+const PARAMS_SAP_DEFAUT = {
+  societe: "",            // Code société SAP (BUKRS)
+  compteCharge: "",       // Compte de charge / achats (débit)
+  compteTva: "",          // Compte TVA déductible (débit)
+  compteFournisseur: "",  // Compte fournisseur collectif (crédit)
+  codeTva: "",            // Indicateur de TVA (MWSKZ), ex. "V1"
+  typePiece: "KR",        // Type de pièce (BLART), KR = facture fournisseur
+};
+
+export function getParamsSAP() {
+  const org = getProfil()?.org_id || "default";
+  try {
+    return { ...PARAMS_SAP_DEFAUT, ...(JSON.parse(localStorage.getItem(`${CLE_SAP}:${org}`)) || {}) };
+  } catch { return { ...PARAMS_SAP_DEFAUT }; }
+}
+export function setParamsSAP(p) {
+  const org = getProfil()?.org_id || "default";
+  localStorage.setItem(`${CLE_SAP}:${org}`, JSON.stringify({ ...PARAMS_SAP_DEFAUT, ...p }));
+}
+
+const COLS_SAP = [
+  "NumPiece", "TypePiece", "DatePiece", "DateCompta", "Societe", "Devise",
+  "Reference", "CleCompta", "Compte", "Tiers", "Montant", "CodeTVA", "Texte",
+];
+
+// Génère un CSV d'écritures FI en partie double, prêt pour un import LSMW/FB01.
+// Pour chaque facture : débit charge (40) + débit TVA déductible (40, si TVA)
+// + crédit fournisseur (31). Les 2-3 lignes partagent un NumPiece.
+export async function exporterSAP(factures) {
+  const c = getParamsSAP();
+  if (!c.compteCharge || !c.compteFournisseur) {
+    throw new Error("Configurez d'abord les comptes SAP dans Réglages (compte de charge et compte fournisseur).");
+  }
+
+  const sep = ";";
+  const num = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+  const echappe = (v) => {
+    const s = String(v ?? "");
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const lignes = [];
+  let piece = 1;
+  for (const f of factures) {
+    const datePiece = f.date || "";
+    const ref = f.numero || "";
+    const tiers = f.fournisseurs?.ncc || f.fournisseurs?.nom || "";
+    const texte = f.fournisseurs?.nom || "";
+    const devise = f.devise || "XOF";
+    const ht = Number(f.total_ht) || 0;
+    const tva = Number(f.montant_tva) || 0;
+    const ttc = Number(f.total_ttc) || 0;
+
+    const base = [piece, c.typePiece, datePiece, datePiece, c.societe, devise, ref];
+    // Débit charge
+    lignes.push([...base, "40", c.compteCharge, "", num(ht), c.codeTva, texte]);
+    // Débit TVA déductible (si présente et compte configuré)
+    if (tva > 0 && c.compteTva) {
+      lignes.push([...base, "40", c.compteTva, "", num(tva), c.codeTva, "TVA deductible"]);
+    }
+    // Crédit fournisseur
+    lignes.push([...base, "31", c.compteFournisseur, tiers, num(ttc), "", texte]);
+    piece++;
+  }
+
+  const contenu = "﻿" + [
+    COLS_SAP.join(sep),
+    ...lignes.map((r) => r.map(echappe).join(sep)),
+  ].join("\r\n");
+
+  telecharger(contenu, `sap_fi_${horodatage()}.csv`, "text/csv;charset=utf-8");
+  await journaliser("export_sap_fi", `${factures.length} factures`);
 }
 
 /* --------------------------- PDF récap ----------------------------- */

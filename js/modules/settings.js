@@ -9,7 +9,7 @@
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
-import { exporterCSV, exporterExcel } from "./export.js";
+import { exporterCSV, exporterExcel, exporterSAP, getParamsSAP, setParamsSAP } from "./export.js";
 
 export async function render() {
   const p = getProfil();
@@ -40,15 +40,35 @@ export async function render() {
         <div class="grow field"><label for="ex-debut">Du</label><input id="ex-debut" type="date" value="${isoDebut}" /></div>
         <div class="grow field"><label for="ex-fin">Au</label><input id="ex-fin" type="date" value="${isoFin}" /></div>
       </div>
-      <div class="row" style="gap:10px">
+      <div class="row wrap" style="gap:10px">
         <button id="ex-csv" class="btn btn-primary grow">⬇ CSV (Sage)</button>
         <button id="ex-xls" class="btn btn-secondary grow">⬇ Excel</button>
+        <button id="ex-sap" class="btn btn-secondary grow">⬇ SAP (écritures FI)</button>
       </div>
       <label class="row" style="gap:8px;margin-top:12px;font-size:.85rem">
         <input id="ex-marquer" type="checkbox" style="width:auto" />
         Marquer les factures exportées comme « exportée »
       </label>
       <p id="ex-info" class="muted" style="font-size:.82rem"></p>
+    </div>
+
+    <div class="card">
+      <h3>Paramètres comptables SAP</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Comptes utilisés pour générer les écritures FI (partie double). ⚠️ Le plan
+        comptable, les codes société/TVA et le type de pièce dépendent de VOTRE
+        configuration SAP — à valider avec votre intégrateur / expert-comptable.
+        Ces réglages sont enregistrés sur cet appareil.
+      </p>
+      <div class="row" style="gap:12px">
+        <div class="grow field"><label for="sap-societe">Code société (BUKRS)</label><input id="sap-societe" placeholder="Ex. CI01" /></div>
+        <div class="grow field"><label for="sap-piece">Type de pièce (BLART)</label><input id="sap-piece" placeholder="KR" /></div>
+      </div>
+      <div class="field"><label for="sap-charge">Compte de charge / achats (débit)</label><input id="sap-charge" placeholder="Ex. 601000" /></div>
+      <div class="field"><label for="sap-tva">Compte TVA déductible (débit)</label><input id="sap-tva" placeholder="Ex. 445660" /></div>
+      <div class="field"><label for="sap-fourn">Compte fournisseur collectif (crédit)</label><input id="sap-fourn" placeholder="Ex. 401000" /></div>
+      <div class="field" style="max-width:200px"><label for="sap-codetva">Code TVA (MWSKZ)</label><input id="sap-codetva" placeholder="Ex. V1" /></div>
+      <button id="sap-save" class="btn btn-primary btn-sm">Enregistrer les comptes</button>
     </div>
 
     ${estAdmin ? `<div class="card">
@@ -70,6 +90,27 @@ export async function render() {
   // --- Export ---
   $("#ex-csv").onclick = (e) => lancerExport(e.currentTarget, "csv");
   $("#ex-xls").onclick = (e) => lancerExport(e.currentTarget, "xls");
+  $("#ex-sap").onclick = (e) => lancerExport(e.currentTarget, "sap");
+
+  // --- Paramètres comptables SAP ---
+  const sap = getParamsSAP();
+  $("#sap-societe").value = sap.societe;
+  $("#sap-piece").value = sap.typePiece;
+  $("#sap-charge").value = sap.compteCharge;
+  $("#sap-tva").value = sap.compteTva;
+  $("#sap-fourn").value = sap.compteFournisseur;
+  $("#sap-codetva").value = sap.codeTva;
+  $("#sap-save").onclick = () => {
+    setParamsSAP({
+      societe: $("#sap-societe").value.trim(),
+      typePiece: $("#sap-piece").value.trim() || "KR",
+      compteCharge: $("#sap-charge").value.trim(),
+      compteTva: $("#sap-tva").value.trim(),
+      compteFournisseur: $("#sap-fourn").value.trim(),
+      codeTva: $("#sap-codetva").value.trim(),
+    });
+    toast("Comptes SAP enregistrés.", "success");
+  };
 
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
@@ -94,6 +135,7 @@ async function lancerExport(btn, format) {
       return;
     }
     if (format === "csv") await exporterCSV(exportables);
+    else if (format === "sap") await exporterSAP(exportables);
     else await exporterExcel(exportables);
 
     // Marquage optionnel "exportée".
