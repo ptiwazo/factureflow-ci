@@ -107,7 +107,7 @@ async function appelProxy(payload, { retries = CONFIG.AI_RETRIES } = {}) {
       clearTimeout(timer);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (res.status === 401) throw new Error("Authentification refusée par le proxy IA.");
+        // On remonte le message précis du proxy (utile pour diagnostiquer la config).
         throw new Error(data?.error || `Erreur IA (${res.status}).`);
       }
       return data;

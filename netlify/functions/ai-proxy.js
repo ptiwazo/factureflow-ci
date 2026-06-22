@@ -52,16 +52,21 @@ async function verifierJwtSupabase(authHeader) {
   if (!token) return null;
   const url = process.env.SUPABASE_URL;
   const anon = process.env.SUPABASE_ANON_KEY;
-  if (!url || !anon) return null; // mauvaise config serveur → on refuse par sécurité
+  // Diagnostic renvoyé : { user, reason }. reason aide à corriger la config
+  // sans exposer de secret (on ne renvoie jamais la clé, juste la cause).
+  if (!token) return { user: null, reason: "no_token" };
+  if (!url || !anon) return { user: null, reason: "server_misconfig" };
   try {
-    const res = await fetch(`${url}/auth/v1/user`, {
+    const base = url.replace(/\/+$/, ""); // tolère un slash final dans SUPABASE_URL
+    const res = await fetch(`${base}/auth/v1/user`, {
       headers: { apikey: anon, Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { user: null, reason: `auth_${res.status}` };
     const user = await res.json();
-    return user && user.id ? user : null;
+    if (user && user.id) return { user, reason: "ok" };
+    return { user: null, reason: "no_user" };
   } catch {
-    return null;
+    return { user: null, reason: "auth_unreachable" };
   }
 }
 
@@ -80,9 +85,25 @@ exports.handler = async (event) => {
 
   // 2) Vérifier le JWT Supabase.
   const auth = event.headers.authorization || event.headers.Authorization || "";
-  const user = await verifierJwtSupabase(auth);
+  const { user, reason } = await verifierJwtSupabase(auth);
   if (!user) {
-    return { statusCode: 401, headers: cors, body: JSON.stringify({ error: "Authentification requise" }) };
+    // Config serveur incomplète → 500 (problème côté déploiement, pas côté client).
+    if (reason === "server_misconfig") {
+      return { statusCode: 500, headers: cors, body: JSON.stringify({
+        error: "Config serveur IA incomplète : SUPABASE_URL et/ou SUPABASE_ANON_KEY manquantes côté Netlify.",
+        reason }) };
+    }
+    // Sinon, problème d'authentification (token absent/expiré, clé anon erronée…).
+    const messages = {
+      no_token: "Aucun jeton transmis au proxy.",
+      no_user: "Jeton valide mais aucun utilisateur associé.",
+      auth_401: "Jeton refusé par Supabase (clé anon erronée ou jeton invalide).",
+      auth_403: "Accès refusé par Supabase (vérifiez SUPABASE_ANON_KEY).",
+      auth_404: "Endpoint Supabase introuvable (vérifiez SUPABASE_URL).",
+      auth_unreachable: "Supabase injoignable depuis le proxy.",
+    };
+    return { statusCode: 401, headers: cors, body: JSON.stringify({
+      error: messages[reason] || "Authentification refusée.", reason }) };
   }
 
   try {
