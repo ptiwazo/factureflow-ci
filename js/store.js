@@ -186,9 +186,13 @@ export async function journaliser(action, cible) {
   const p = getProfil();
   if (!p?.org_id) return;
   // Best-effort : un échec de log ne doit jamais bloquer l'action métier.
-  await supabase.from("logs").insert({
-    org_id: p.org_id, user_id: p.user?.id, action, cible: cible || null,
-  }).catch(() => {});
+  // NB : le query builder Supabase est "thenable" mais n'expose pas .catch(),
+  // d'où le try/catch autour du await.
+  try {
+    await supabase.from("logs").insert({
+      org_id: p.org_id, user_id: p.user?.id, action, cible: cible || null,
+    });
+  } catch { /* log non bloquant */ }
 }
 
 export async function listerLogs(limite = 50) {
