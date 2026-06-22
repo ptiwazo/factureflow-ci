@@ -3,16 +3,28 @@
    (Déduplication par NCC assurée côté store.trouverOuCreerFournisseur.)
 ===================================================================== */
 import { $, setView, toast, fcfa, dateFr, esc, emptyState, statutBadge, nccValide, busy } from "../ui.js";
-import { listerFournisseurs, getFournisseur, listerFactures, majFournisseur, journaliser } from "../store.js";
+import { listerFournisseurs, getFournisseur, listerFactures, majFournisseur, journaliser, upsertFournisseur } from "../store.js";
 import { getProfil } from "../auth.js";
 import { navigate } from "../app.js";
 
 export async function renderListe() {
+  const peutEcrire = ["admin", "saisie"].includes(getProfil()?.role);
   setView(`
-    <h1 class="page-title">Fournisseurs</h1>
+    <div class="row between">
+      <h1 class="page-title">Fournisseurs</h1>
+      ${peutEcrire ? `<button id="btn-import" class="btn btn-secondary btn-sm">⬆ Importer Excel</button>` : ""}
+    </div>
     <input id="recherche" type="search" placeholder="Rechercher par nom ou NCC…" class="mb" />
+    <div id="import-info"></div>
     <div id="liste"><div class="loading-block"><span class="spinner dark"></span></div></div>
+    <input id="import-input" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
   `);
+
+  if (peutEcrire) {
+    const input = $("#import-input");
+    $("#btn-import").onclick = () => input.click();
+    input.addEventListener("change", () => { if (input.files[0]) importerExcel(input.files[0]); input.value = ""; });
+  }
 
   let tous = [];
   try { tous = await listerFournisseurs(); }
@@ -110,4 +122,79 @@ export async function renderDetail(id) {
       renderDetail(id);
     } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
   };
+}
+
+/* ----------------------- Import Excel (xlsx/xls/csv) ---------------- */
+// Normalise une clé d'en-tête : minuscule, sans accents, espaces compactés.
+function normCle(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/[._-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// Correspondances acceptées pour chaque champ (tolérance sur les intitulés).
+const COLONNES = {
+  nom: ["nom", "raison sociale", "fournisseur", "name", "supplier", "cardname"],
+  ncc: ["ncc", "numero compte contribuable", "n ccc", "tax id", "taxid", "compte contribuable"],
+  rccm: ["rccm", "registre commerce"],
+  telephone: ["telephone", "tel", "phone", "contact", "mobile"],
+  compteSap: ["compte sap", "compte sap fournisseur", "cardcode", "card code", "code sap", "sap", "compte fournisseur"],
+};
+
+function mapLigne(row) {
+  // row : objet { en-tête: valeur }. On indexe par clé normalisée.
+  const index = {};
+  for (const k of Object.keys(row)) index[normCle(k)] = row[k];
+  const lire = (champ) => {
+    for (const alias of COLONNES[champ]) if (index[alias] != null && String(index[alias]).trim() !== "") return String(index[alias]).trim();
+    return "";
+  };
+  return { nom: lire("nom"), ncc: lire("ncc"), rccm: lire("rccm"), telephone: lire("telephone"), compteSap: lire("compteSap") };
+}
+
+async function importerExcel(file) {
+  const info = $("#import-info");
+  info.innerHTML = `<div class="alert alert-info"><span class="spinner dark"></span> Lecture du fichier…</div>`;
+  try {
+    // Chargement à la demande de SheetJS (lecture xlsx/xls/csv).
+    const mod = await import("https://esm.sh/xlsx@0.18.5");
+    const XLSX = mod.read ? mod : (mod.default || mod); // export nommé ou default selon le CDN
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const feuille = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(feuille, { defval: "" });
+
+    if (!rows.length) { info.innerHTML = `<div class="alert alert-warn">Fichier vide ou sans données.</div>`; return; }
+
+    const lignes = rows.map(mapLigne).filter((l) => l.nom || l.ncc);
+    if (!lignes.length) {
+      info.innerHTML = `<div class="alert alert-danger">Aucune colonne reconnue. Attendu : Nom, NCC, RCCM, Téléphone, Compte SAP.</div>`;
+      return;
+    }
+
+    let cree = 0, maj = 0, ignore = 0, erreurs = 0;
+    for (const l of lignes) {
+      try {
+        const r = await upsertFournisseur(l);
+        if (r.action === "cree") cree++;
+        else if (r.action === "maj") maj++;
+        else ignore++;
+      } catch { erreurs++; }
+    }
+
+    await journaliser("import_fournisseurs", `${lignes.length} lignes`);
+    info.innerHTML = `<div class="alert alert-info">✅ Import terminé : <strong>${cree}</strong> créé(s),
+      <strong>${maj}</strong> mis à jour, ${ignore} ignoré(s)${erreurs ? `, <strong style="color:var(--danger)">${erreurs} erreur(s)</strong>` : ""}.</div>`;
+    toast("Import des fournisseurs terminé.", "success");
+
+    // Rafraîchit la liste.
+    const tous = await listerFournisseurs();
+    const cible = $("#liste");
+    cible.innerHTML = `<div class="list">${tous.map((f) => `
+      <a class="list-item" href="#/fournisseur/${f.id}">
+        <div class="li-main"><div class="li-title">${esc(f.nom)}</div>
+          <div class="li-sub">${f.ncc ? "NCC " + esc(f.ncc) : `<span style="color:var(--danger)">NCC manquant</span>`}${f.compte_sap ? " · SAP " + esc(f.compte_sap) : ""}</div></div>
+        <span>›</span></a>`).join("")}</div>`;
+  } catch (e) {
+    info.innerHTML = `<div class="alert alert-danger">⚠️ Import impossible : ${esc(e.message || "fichier illisible")}.</div>`;
+  }
 }

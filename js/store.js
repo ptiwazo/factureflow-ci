@@ -79,6 +79,37 @@ export async function majFournisseur(id, patch) {
   if (error) throw error;
 }
 
+// Upsert d'un fournisseur lors d'un import : crée s'il n'existe pas (dédup par
+// NCC, sinon par nom), sinon met à jour les champs fournis (non vides).
+// Retourne { action: "cree" | "maj" | "ignore", fournisseur }.
+export async function upsertFournisseur({ nom, ncc, rccm, telephone, compteSap }) {
+  const org = orgId();
+  nom = (nom || "").trim();
+  ncc = (ncc || "").trim() || null;
+  if (!nom && !ncc) return { action: "ignore" }; // ligne inexploitable
+
+  const existant = await rechercherFournisseur({ nom, ncc });
+  if (existant) {
+    // On ne met à jour que les champs fournis (non vides) pour ne rien écraser à vide.
+    const patch = {};
+    if (nom && nom !== existant.nom) patch.nom = nom;
+    if (ncc && ncc !== existant.ncc) patch.ncc = ncc;
+    if ((rccm || "").trim()) patch.rccm = rccm.trim();
+    if ((telephone || "").trim()) patch.telephone = telephone.trim();
+    if ((compteSap || "").trim()) patch.compte_sap = compteSap.trim();
+    if (Object.keys(patch).length) await majFournisseur(existant.id, patch);
+    return { action: "maj", fournisseur: { ...existant, ...patch } };
+  }
+
+  const { data, error } = await supabase.from("fournisseurs")
+    .insert({ org_id: org, nom: nom || "Fournisseur inconnu", ncc,
+      rccm: (rccm || "").trim() || null, telephone: (telephone || "").trim() || null,
+      compte_sap: (compteSap || "").trim() || null, created_by: getProfil()?.user?.id })
+    .select().single();
+  if (error) throw error;
+  return { action: "cree", fournisseur: data };
+}
+
 /* ------------------------------ Factures --------------------------- */
 export async function listerFactures({ statut, fournisseurId, debut, fin } = {}) {
   let q = supabase.from("factures")
