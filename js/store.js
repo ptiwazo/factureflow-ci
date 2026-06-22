@@ -140,6 +140,29 @@ export async function creerFactureComplete({ entete, lignes, fichier, extraction
   return facture;
 }
 
+// Recherche un doublon probable AVANT enregistrement.
+//  - Si un numéro est présent : même fournisseur + même numéro.
+//  - Sinon (numéro illisible) : même fournisseur + même date + même TTC.
+// Retourne la facture existante trouvée, ou null. (RLS limite déjà à l'org.)
+export async function chercherDoublon({ fournisseurId, numero, date, totalTtc, excludeId = null }) {
+  if (!fournisseurId) return null;
+  let q = supabase.from("factures").select("id, numero, date, total_ttc, statut").eq("fournisseur_id", fournisseurId);
+
+  const num = (numero || "").trim();
+  if (num) {
+    q = q.eq("numero", num);
+  } else if (date && totalTtc != null) {
+    q = q.eq("date", date).eq("total_ttc", totalTtc);
+  } else {
+    return null; // pas assez d'éléments pour décider d'un doublon
+  }
+  if (excludeId) q = q.neq("id", excludeId);
+
+  const { data, error } = await q.limit(1);
+  if (error) throw error;
+  return data && data.length ? data[0] : null;
+}
+
 export async function majStatutFacture(id, statut) {
   const { error } = await supabase.from("factures").update({ statut }).eq("id", id);
   if (error) throw error;

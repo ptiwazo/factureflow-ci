@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, busy, fcfa, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
 import { CONFIG } from "../config.js";
-import { trouverOuCreerFournisseur, creerFactureComplete, journaliser } from "../store.js";
+import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon } from "../store.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
 
@@ -225,7 +225,7 @@ async function enregistrer(btn, forcerNonConforme) {
   // Statut : non conforme si demandé OU si NCC absent.
   const statut = (forcerNonConforme || !ncc) ? "non_conforme" : "validee";
 
-  busy(btn, true, "Enregistrement…");
+  busy(btn, true, "Vérification…");
   try {
     // 1) Fournisseur (déduplication par NCC dans le store).
     const fournisseur = await trouverOuCreerFournisseur({
@@ -234,12 +234,30 @@ async function enregistrer(btn, forcerNonConforme) {
       telephone: $("#f-tel").value.trim(),
     });
 
+    // 1b) Détection de doublon : même fournisseur + même n° (ou date + TTC).
+    const numero = $("#fc-num").value.trim();
+    const dateFacture = $("#fc-date").value || null;
+    const doublon = await chercherDoublon({
+      fournisseurId: fournisseur.id, numero, date: dateFacture, totalTtc: totauxCourants.total_ttc,
+    });
+    if (doublon) {
+      busy(btn, false);
+      const detail = `${doublon.numero || "sans n°"} · ${fcfa(doublon.total_ttc)}`;
+      const ok = confirm(
+        `⚠️ Doublon probable : une facture de « ${nom} » (${detail}) existe déjà.\n\n` +
+        `Enregistrer quand même cette facture ?`);
+      if (!ok) return; // on bloque par défaut
+      busy(btn, true, "Enregistrement…");
+    } else {
+      busy(btn, true, "Enregistrement…");
+    }
+
     // 2) Facture + lignes + original.
     const facture = await creerFactureComplete({
       entete: {
         fournisseur_id: fournisseur.id,
-        numero: $("#fc-num").value.trim(),
-        date: $("#fc-date").value || null,
+        numero,
+        date: dateFacture,
         echeance: $("#fc-ech").value || null,
         devise: $("#fc-dev").value.trim() || CONFIG.DEVISE_DEFAUT,
         taux_tva: toNumber($("#taux-tva").value),
