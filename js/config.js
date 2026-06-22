@@ -43,57 +43,59 @@ export const CONFIG = {
 // dans Réglages (à valider par un expert-comptable).
 // Liste enrichie. Les codes existants sont conservés (compatibilité des lignes
 // déjà enregistrées) ; chaque catégorie porte un `groupe` pour l'affichage.
+// Libellés et groupes en ANGLAIS (terminologie IFRS / IAS 1 « expenses by nature »).
+// Les `code` sont inchangés (compatibilité des lignes déjà enregistrées).
 export const CATEGORIES_CHARGE = [
-  // Achats / stocks
-  { code: "marchandises",   groupe: "Achats & stocks",          label: "Achats de marchandises" },
-  { code: "matieres",       groupe: "Achats & stocks",          label: "Matières premières & consommables" },
-  { code: "fournitures",    groupe: "Achats & stocks",          label: "Fournitures de bureau & petit matériel" },
-  { code: "emballages",     groupe: "Achats & stocks",          label: "Emballages" },
-  { code: "pieces",         groupe: "Achats & stocks",          label: "Pièces détachées & consommables techniques" },
+  // Purchases & inventory
+  { code: "marchandises",   groupe: "Purchases & inventory",  label: "Purchases of goods for resale" },
+  { code: "matieres",       groupe: "Purchases & inventory",  label: "Raw materials & consumables used" },
+  { code: "fournitures",    groupe: "Purchases & inventory",  label: "Office supplies & small equipment" },
+  { code: "emballages",     groupe: "Purchases & inventory",  label: "Packaging materials" },
+  { code: "pieces",         groupe: "Purchases & inventory",  label: "Spare parts & technical consumables" },
 
-  // Services extérieurs
-  { code: "services",       groupe: "Services extérieurs",      label: "Services extérieurs (divers)" },
-  { code: "honoraires",     groupe: "Services extérieurs",      label: "Honoraires (conseil, avocat, expert-comptable)" },
-  { code: "soustraitance",  groupe: "Services extérieurs",      label: "Sous-traitance" },
-  { code: "interim",        groupe: "Services extérieurs",      label: "Personnel intérimaire & détaché" },
-  { code: "entretien",      groupe: "Services extérieurs",      label: "Entretien & réparations" },
-  { code: "maintenance",    groupe: "Services extérieurs",      label: "Maintenance & support technique" },
-  { code: "nettoyage",      groupe: "Services extérieurs",      label: "Nettoyage & propreté" },
-  { code: "securite",       groupe: "Services extérieurs",      label: "Sécurité & gardiennage" },
-  { code: "logiciels",      groupe: "Services extérieurs",      label: "Logiciels, licences & abonnements SaaS" },
-  { code: "documentation",  groupe: "Services extérieurs",      label: "Documentation & abonnements" },
-  { code: "formation",      groupe: "Services extérieurs",      label: "Formation" },
-  { code: "publicite",      groupe: "Services extérieurs",      label: "Publicité, marketing & communication" },
-  { code: "restauration",   groupe: "Services extérieurs",      label: "Restauration & réception" },
+  // External services
+  { code: "services",       groupe: "External services",      label: "External services (general)" },
+  { code: "honoraires",     groupe: "External services",      label: "Professional fees (consulting, legal, audit)" },
+  { code: "soustraitance",  groupe: "External services",      label: "Subcontracting" },
+  { code: "interim",        groupe: "External services",      label: "Temporary & outsourced staff" },
+  { code: "entretien",      groupe: "External services",      label: "Repairs & maintenance" },
+  { code: "maintenance",    groupe: "External services",      label: "Maintenance & technical support" },
+  { code: "nettoyage",      groupe: "External services",      label: "Cleaning services" },
+  { code: "securite",       groupe: "External services",      label: "Security & guarding" },
+  { code: "logiciels",      groupe: "External services",      label: "Software, licences & SaaS subscriptions" },
+  { code: "documentation",  groupe: "External services",      label: "Documentation & subscriptions" },
+  { code: "formation",      groupe: "External services",      label: "Training" },
+  { code: "publicite",      groupe: "External services",      label: "Advertising, marketing & communication" },
+  { code: "restauration",   groupe: "External services",      label: "Catering & hospitality" },
 
-  // Locations
-  { code: "loyers",         groupe: "Locations",                label: "Loyers & charges locatives" },
-  { code: "location_mat",   groupe: "Locations",                label: "Location de matériel & véhicules" },
+  // Leases & rentals
+  { code: "loyers",         groupe: "Leases & rentals",       label: "Rent & lease charges" },
+  { code: "location_mat",   groupe: "Leases & rentals",       label: "Equipment & vehicle rental" },
 
-  // Logistique & déplacements
-  { code: "transport",      groupe: "Logistique & déplacements", label: "Transport sur achats & logistique" },
-  { code: "deplacements",   groupe: "Logistique & déplacements", label: "Déplacements & missions" },
-  { code: "carburant",      groupe: "Logistique & déplacements", label: "Carburant" },
-  { code: "douane",         groupe: "Logistique & déplacements", label: "Droits de douane & transit" },
+  // Logistics & travel
+  { code: "transport",      groupe: "Logistics & travel",     label: "Freight & logistics on purchases" },
+  { code: "deplacements",   groupe: "Logistics & travel",     label: "Travel & business trips" },
+  { code: "carburant",      groupe: "Logistics & travel",     label: "Fuel" },
+  { code: "douane",         groupe: "Logistics & travel",     label: "Customs duties & clearance" },
 
-  // Énergie & fluides
-  { code: "energie",        groupe: "Énergie & fluides",        label: "Énergie & fluides (regroupé)" },
-  { code: "electricite",    groupe: "Énergie & fluides",        label: "Électricité" },
-  { code: "eau",            groupe: "Énergie & fluides",        label: "Eau" },
+  // Energy & utilities
+  { code: "energie",        groupe: "Energy & utilities",     label: "Energy & utilities (combined)" },
+  { code: "electricite",    groupe: "Energy & utilities",     label: "Electricity" },
+  { code: "eau",            groupe: "Energy & utilities",     label: "Water" },
 
   // Communications
-  { code: "telecom",        groupe: "Communications",           label: "Télécoms & internet" },
-  { code: "poste",          groupe: "Communications",           label: "Frais postaux & courrier" },
+  { code: "telecom",        groupe: "Communications",         label: "Telecom & internet" },
+  { code: "poste",          groupe: "Communications",         label: "Postage & courier" },
 
-  // Financier & divers
-  { code: "assurances",     groupe: "Financier & divers",       label: "Assurances" },
-  { code: "banque",         groupe: "Financier & divers",       label: "Frais & commissions bancaires" },
-  { code: "medical",        groupe: "Financier & divers",       label: "Frais médicaux & santé" },
-  { code: "impots",         groupe: "Financier & divers",       label: "Impôts & taxes" },
+  // Financial & other
+  { code: "assurances",     groupe: "Financial & other",      label: "Insurance" },
+  { code: "banque",         groupe: "Financial & other",      label: "Bank fees & commissions" },
+  { code: "medical",        groupe: "Financial & other",      label: "Medical & health expenses" },
+  { code: "impots",         groupe: "Financial & other",      label: "Taxes & duties" },
 
-  // Hors charges
-  { code: "immobilisation", groupe: "Hors charges",             label: "Immobilisation (à capitaliser, non charge)" },
-  { code: "autres",         groupe: "Hors charges",             label: "Autres charges" },
+  // Non-expense
+  { code: "immobilisation", groupe: "Non-expense",            label: "Capital expenditure (capitalise, not an expense)" },
+  { code: "autres",         groupe: "Non-expense",            label: "Other expenses" },
 ];
 export const CATEGORIE_DEFAUT = "autres";
 
