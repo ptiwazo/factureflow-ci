@@ -242,9 +242,10 @@ async function enregistrer(btn, forcerNonConforme) {
     });
     if (doublon) {
       busy(btn, false);
-      const detail = `${doublon.numero || "sans n°"} · ${fcfa(doublon.total_ttc)}`;
+      const fournExist = doublon.fournisseurs?.nom || "fournisseur inconnu";
       const ok = confirm(
-        `⚠️ Doublon probable : une facture de « ${nom} » (${detail}) existe déjà.\n\n` +
+        `⚠️ Doublon probable : le numéro de facture « ${numero || "sans n°"} » existe déjà ` +
+        `(${fournExist} · ${fcfa(doublon.total_ttc)}).\n\n` +
         `Enregistrer quand même cette facture ?`);
       if (!ok) return; // on bloque par défaut
       busy(btn, true, "Enregistrement…");
