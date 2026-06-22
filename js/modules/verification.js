@@ -7,15 +7,16 @@
    explicite de l'utilisateur — aucune validation silencieuse de montants.
 ===================================================================== */
 import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
-import { CONFIG, CATEGORIES_CHARGE, CATEGORIE_DEFAUT } from "../config.js";
+import { CONFIG, CATEGORIES_GROUPES, CATEGORIE_DEFAUT } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
 import { comptePourCategorie } from "./export.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
 
-// <option> des catégories de charge (IFRS), réutilisé par chaque ligne.
-const OPTIONS_CATEGORIE = CATEGORIES_CHARGE
-  .map((c) => `<option value="${c.code}">${esc(c.label)}</option>`).join("");
+// <optgroup> des catégories de charge (IFRS), regroupées par nature.
+const OPTIONS_CATEGORIE = CATEGORIES_GROUPES.map((g) =>
+  `<optgroup label="${esc(g.groupe)}">${g.items.map((c) =>
+    `<option value="${c.code}">${esc(c.label)}</option>`).join("")}</optgroup>`).join("");
 
 // Détermine si un champ (chemin "facture.numero") est marqué incertain par l'IA.
 function estIncertain(d, chemin) {

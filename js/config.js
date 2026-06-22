@@ -42,58 +42,67 @@ export const CONFIG = {
 // classer chaque ligne ; le numéro de compte réel est mappé par l'utilisateur
 // dans Réglages (à valider par un expert-comptable).
 // Liste enrichie. Les codes existants sont conservés (compatibilité des lignes
-// déjà enregistrées) ; les catégories plus fines viennent les compléter.
+// déjà enregistrées) ; chaque catégorie porte un `groupe` pour l'affichage.
 export const CATEGORIES_CHARGE = [
-  // --- Achats / stocks ---
-  { code: "marchandises",   label: "Achats de marchandises" },
-  { code: "matieres",       label: "Matières premières & consommables" },
-  { code: "fournitures",    label: "Fournitures de bureau & petit matériel" },
-  { code: "emballages",     label: "Emballages" },
-  { code: "pieces",         label: "Pièces détachées & consommables techniques" },
+  // Achats / stocks
+  { code: "marchandises",   groupe: "Achats & stocks",          label: "Achats de marchandises" },
+  { code: "matieres",       groupe: "Achats & stocks",          label: "Matières premières & consommables" },
+  { code: "fournitures",    groupe: "Achats & stocks",          label: "Fournitures de bureau & petit matériel" },
+  { code: "emballages",     groupe: "Achats & stocks",          label: "Emballages" },
+  { code: "pieces",         groupe: "Achats & stocks",          label: "Pièces détachées & consommables techniques" },
 
-  // --- Services extérieurs ---
-  { code: "services",       label: "Services extérieurs (divers)" },
-  { code: "honoraires",     label: "Honoraires (conseil, avocat, expert-comptable)" },
-  { code: "soustraitance",  label: "Sous-traitance" },
-  { code: "interim",        label: "Personnel intérimaire & détaché" },
-  { code: "entretien",      label: "Entretien & réparations" },
-  { code: "maintenance",    label: "Maintenance & support technique" },
-  { code: "nettoyage",      label: "Nettoyage & propreté" },
-  { code: "securite",       label: "Sécurité & gardiennage" },
-  { code: "logiciels",      label: "Logiciels, licences & abonnements SaaS" },
-  { code: "documentation",  label: "Documentation & abonnements" },
-  { code: "formation",      label: "Formation" },
-  { code: "publicite",      label: "Publicité, marketing & communication" },
-  { code: "restauration",   label: "Restauration & réception" },
+  // Services extérieurs
+  { code: "services",       groupe: "Services extérieurs",      label: "Services extérieurs (divers)" },
+  { code: "honoraires",     groupe: "Services extérieurs",      label: "Honoraires (conseil, avocat, expert-comptable)" },
+  { code: "soustraitance",  groupe: "Services extérieurs",      label: "Sous-traitance" },
+  { code: "interim",        groupe: "Services extérieurs",      label: "Personnel intérimaire & détaché" },
+  { code: "entretien",      groupe: "Services extérieurs",      label: "Entretien & réparations" },
+  { code: "maintenance",    groupe: "Services extérieurs",      label: "Maintenance & support technique" },
+  { code: "nettoyage",      groupe: "Services extérieurs",      label: "Nettoyage & propreté" },
+  { code: "securite",       groupe: "Services extérieurs",      label: "Sécurité & gardiennage" },
+  { code: "logiciels",      groupe: "Services extérieurs",      label: "Logiciels, licences & abonnements SaaS" },
+  { code: "documentation",  groupe: "Services extérieurs",      label: "Documentation & abonnements" },
+  { code: "formation",      groupe: "Services extérieurs",      label: "Formation" },
+  { code: "publicite",      groupe: "Services extérieurs",      label: "Publicité, marketing & communication" },
+  { code: "restauration",   groupe: "Services extérieurs",      label: "Restauration & réception" },
 
-  // --- Locations ---
-  { code: "loyers",         label: "Loyers & charges locatives" },
-  { code: "location_mat",   label: "Location de matériel & véhicules" },
+  // Locations
+  { code: "loyers",         groupe: "Locations",                label: "Loyers & charges locatives" },
+  { code: "location_mat",   groupe: "Locations",                label: "Location de matériel & véhicules" },
 
-  // --- Logistique / déplacements ---
-  { code: "transport",      label: "Transport sur achats & logistique" },
-  { code: "deplacements",   label: "Déplacements & missions" },
-  { code: "carburant",      label: "Carburant" },
-  { code: "douane",         label: "Droits de douane & transit" },
+  // Logistique & déplacements
+  { code: "transport",      groupe: "Logistique & déplacements", label: "Transport sur achats & logistique" },
+  { code: "deplacements",   groupe: "Logistique & déplacements", label: "Déplacements & missions" },
+  { code: "carburant",      groupe: "Logistique & déplacements", label: "Carburant" },
+  { code: "douane",         groupe: "Logistique & déplacements", label: "Droits de douane & transit" },
 
-  // --- Énergie & fluides ---
-  { code: "energie",        label: "Énergie & fluides (regroupé)" },
-  { code: "electricite",    label: "Électricité" },
-  { code: "eau",            label: "Eau" },
+  // Énergie & fluides
+  { code: "energie",        groupe: "Énergie & fluides",        label: "Énergie & fluides (regroupé)" },
+  { code: "electricite",    groupe: "Énergie & fluides",        label: "Électricité" },
+  { code: "eau",            groupe: "Énergie & fluides",        label: "Eau" },
 
-  // --- Communications ---
-  { code: "telecom",        label: "Télécoms & internet" },
-  { code: "poste",          label: "Frais postaux & courrier" },
+  // Communications
+  { code: "telecom",        groupe: "Communications",           label: "Télécoms & internet" },
+  { code: "poste",          groupe: "Communications",           label: "Frais postaux & courrier" },
 
-  // --- Frais financiers / divers ---
-  { code: "assurances",     label: "Assurances" },
-  { code: "banque",         label: "Frais & commissions bancaires" },
-  { code: "medical",        label: "Frais médicaux & santé" },
-  { code: "impots",         label: "Impôts & taxes" },
+  // Financier & divers
+  { code: "assurances",     groupe: "Financier & divers",       label: "Assurances" },
+  { code: "banque",         groupe: "Financier & divers",       label: "Frais & commissions bancaires" },
+  { code: "medical",        groupe: "Financier & divers",       label: "Frais médicaux & santé" },
+  { code: "impots",         groupe: "Financier & divers",       label: "Impôts & taxes" },
 
-  // --- Hors charges ---
-  { code: "immobilisation", label: "Immobilisation (à capitaliser, non charge)" },
-  { code: "autres",         label: "Autres charges" },
+  // Hors charges
+  { code: "immobilisation", groupe: "Hors charges",             label: "Immobilisation (à capitaliser, non charge)" },
+  { code: "autres",         groupe: "Hors charges",             label: "Autres charges" },
 ];
 export const CATEGORIE_DEFAUT = "autres";
+
+// Catégories regroupées par `groupe`, dans l'ordre d'apparition (pour optgroups
+// et sous-titres). [{ groupe, items: [{code,label,...}] }]
+export const CATEGORIES_GROUPES = CATEGORIES_CHARGE.reduce((acc, c) => {
+  let g = acc.find((x) => x.groupe === c.groupe);
+  if (!g) { g = { groupe: c.groupe, items: [] }; acc.push(g); }
+  g.items.push(c);
+  return acc;
+}, []);
 

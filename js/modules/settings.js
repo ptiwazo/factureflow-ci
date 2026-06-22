@@ -10,7 +10,7 @@ import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
 import { exporterCSV, exporterExcel, exporterSAP, getParamsSAP, setParamsSAP, getComptesCharge, setComptesCharge } from "./export.js";
-import { CATEGORIES_CHARGE } from "../config.js";
+import { CATEGORIES_GROUPES } from "../config.js";
 
 export async function render() {
   const p = getProfil();
@@ -81,11 +81,13 @@ export async function render() {
         À défaut, le compte de charge par défaut ci-dessus est utilisé.
       </p>
       <div id="map-charge">
-        ${CATEGORIES_CHARGE.map((c) => `
-          <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
-            <span class="grow" style="font-size:.9rem">${c.label}</span>
-            <input data-cat="${c.code}" style="max-width:140px" placeholder="N° compte" />
-          </div>`).join("")}
+        ${CATEGORIES_GROUPES.map((g) => `
+          <div class="section-title" style="margin:14px 0 6px">${g.groupe}</div>
+          ${g.items.map((c) => `
+            <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
+              <span class="grow" style="font-size:.9rem">${c.label}</span>
+              <input data-cat="${c.code}" style="max-width:140px" placeholder="N° compte" />
+            </div>`).join("")}`).join("")}
       </div>
       <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
     </div>
