@@ -49,9 +49,12 @@ function corsHeaders(origin) {
 // Vérifie le JWT Supabase. Renvoie l'utilisateur si valide, sinon null.
 async function verifierJwtSupabase(authHeader) {
   const token = (authHeader || "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
-  const url = process.env.SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY;
+  // Nettoie les valeurs d'env : espaces et guillemets parfois collés par erreur
+  // dans l'interface Netlify (cause classique d'URL invalide).
+  const clean = (v) => (v || "").trim().replace(/^["']|["']$/g, "");
+  const url = clean(process.env.SUPABASE_URL);
+  const anon = clean(process.env.SUPABASE_ANON_KEY);
+
   // Diagnostic renvoyé : { user, reason }. reason aide à corriger la config
   // sans exposer de secret (on ne renvoie jamais la clé, juste la cause).
   if (!token) return { user: null, reason: "no_token" };
@@ -65,8 +68,9 @@ async function verifierJwtSupabase(authHeader) {
     const user = await res.json();
     if (user && user.id) return { user, reason: "ok" };
     return { user: null, reason: "no_user" };
-  } catch {
-    return { user: null, reason: "auth_unreachable" };
+  } catch (e) {
+    // Le détail (sans secret) aide a diagnostiquer : URL invalide, fetch absent, DNS…
+    return { user: null, reason: "auth_unreachable", detail: String((e && e.message) || e) };
   }
 }
 
@@ -85,7 +89,7 @@ exports.handler = async (event) => {
 
   // 2) Vérifier le JWT Supabase.
   const auth = event.headers.authorization || event.headers.Authorization || "";
-  const { user, reason } = await verifierJwtSupabase(auth);
+  const { user, reason, detail } = await verifierJwtSupabase(auth);
   if (!user) {
     // Config serveur incomplète → 500 (problème côté déploiement, pas côté client).
     if (reason === "server_misconfig") {
@@ -102,8 +106,9 @@ exports.handler = async (event) => {
       auth_404: "Endpoint Supabase introuvable (vérifiez SUPABASE_URL).",
       auth_unreachable: "Supabase injoignable depuis le proxy.",
     };
+    const baseMsg = messages[reason] || "Authentification refusée.";
     return { statusCode: 401, headers: cors, body: JSON.stringify({
-      error: messages[reason] || "Authentification refusée.", reason }) };
+      error: detail ? `${baseMsg} (${detail})` : baseMsg, reason }) };
   }
 
   try {
