@@ -11,6 +11,7 @@
 import { fcfa, dateFr, esc } from "../ui.js";
 import { journaliser, getLignes } from "../store.js";
 import { getProfil } from "../auth.js";
+import { COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
 
 // En-têtes du relevé comptable.
 const COLS = [
@@ -111,12 +112,18 @@ export function setComptesCharge(map) {
   const org = getProfil()?.org_id || "default";
   localStorage.setItem(`${CLE_COMPTES}:${org}`, JSON.stringify(map || {}));
 }
-// Compte de charge proposé pour une catégorie : mapping de l'org, sinon
-// un compte par défaut (paramètre SAP par défaut, ou `fallback` fourni).
+// Compte de charge à utiliser pour une ligne. Le champ `categorie` de la ligne
+// porte désormais DIRECTEMENT un numéro de compte du plan de référence (choisi
+// par l'IA puis validé). Ordre de résolution :
+//   1) la valeur est un compte du plan de référence → on l'utilise telle quelle ;
+//   2) rétro-compat : ancienne valeur "par nature" → mapping de l'org (Réglages) ;
+//   3) repli : compte par défaut (paramètre SAP, ou `fallback` fourni).
 export function comptePourCategorie(categorie, fallback) {
+  const v = (categorie || "").trim();
+  if (COMPTES_PAR_NUMERO[v]) return v;
   const map = getComptesCharge();
   const def = (fallback != null ? fallback : getParamsSAP().compteCharge) || "";
-  return (map[categorie] || "").trim() || String(def).trim();
+  return (map[v] || "").trim() || String(def).trim();
 }
 
 /* ----------------------- Paramètres comptables Sage ---------------- */

@@ -7,16 +7,19 @@
    explicite de l'utilisateur — aucune validation silencieuse de montants.
 ===================================================================== */
 import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
-import { CONFIG, CATEGORIES_GROUPES, CATEGORIE_DEFAUT } from "../config.js";
+import { CONFIG } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
-import { comptePourCategorie } from "./export.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
+import { PLAN_PAR_SECTION, COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
 
-// <optgroup> des catégories de charge (IFRS), regroupées par nature.
-const OPTIONS_CATEGORIE = CATEGORIES_GROUPES.map((g) =>
-  `<optgroup label="${esc(g.groupe)}">${g.items.map((c) =>
-    `<option value="${c.code}">${esc(c.label)}</option>`).join("")}</optgroup>`).join("");
+// <optgroup> des comptes de charge du plan de référence (IFRS / OHADA),
+// regroupés par section. La valeur est le NUMÉRO DE COMPTE.
+const OPTIONS_CATEGORIE =
+  `<option value="">— Non classé —</option>` +
+  PLAN_PAR_SECTION.map((s) =>
+    `<optgroup label="${esc(s.prefixe)}xxxx — ${esc(s.label)}">${s.comptes.map((c) =>
+      `<option value="${c.compte}">${esc(c.compte)} — ${esc(c.labelFr)}</option>`).join("")}</optgroup>`).join("");
 
 // Détermine si un champ (chemin "facture.numero") est marqué incertain par l'IA.
 function estIncertain(d, chemin) {
@@ -98,13 +101,14 @@ export function render() {
       </div>
       <div style="overflow-x:auto">
       <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Catégorie (IFRS)</th><th>Compte</th><th></th></tr></thead>
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th><th>OHADA</th><th></th></tr></thead>
         <tbody id="lignes-body"></tbody>
       </table>
       </div>
       <p class="muted" style="font-size:.76rem;margin-top:.5rem">
-        Catégorie de charge proposée par l'IA (classification IFRS par nature). Le
-        <strong>compte</strong> provient du mapping défini dans Réglages — ⚠️ numéros à valider par un expert-comptable.
+        Le <strong>compte de charge</strong> est proposé par l'IA d'après le plan de référence
+        (IFRS / OHADA) en fonction de la ligne. Vérifiez et ajustez si besoin — ⚠️ imputations à
+        valider par un expert-comptable.
       </p>
     </div>
 
@@ -162,7 +166,7 @@ function ligneRow(l) {
   const tauxDefaut = toNumber($("#taux-tva")?.value) || CONFIG.TVA_DEFAUT;
   const tauxLigne = l.taux_tva != null && l.taux_tva !== "" ? toNumber(l.taux_tva) : tauxDefaut;
 
-  const cat = l.categorie || CATEGORIE_DEFAUT;
+  const cat = COMPTES_PAR_NUMERO[l.categorie] ? l.categorie : "";
   const tr = document.createElement("tr");
   tr.innerHTML = `
     <td class="col-des"><input class="l-des" type="text" value="${(l.designation || "").replace(/"/g, "&quot;")}" /></td>
@@ -182,11 +186,11 @@ function ligneRow(l) {
   const compte = tr.querySelector(".l-compte");
   sel.value = cat;
 
-  // Affiche le compte de charge proposé pour la catégorie courante.
+  // Affiche l'équivalent OHADA du compte de charge sélectionné (cross-réf SYSCOHADA).
   const majCompte = () => {
-    const c = comptePourCategorie(sel.value);
-    compte.textContent = c || "à mapper";
-    compte.style.color = c ? "var(--teal)" : "var(--danger)";
+    const ref = COMPTES_PAR_NUMERO[sel.value];
+    compte.textContent = ref ? (ref.ohada || "—") : "non classé";
+    compte.style.color = ref ? "var(--muted)" : "var(--danger)";
   };
   majCompte();
 

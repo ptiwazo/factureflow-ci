@@ -6,11 +6,15 @@
    ci-dessous (schéma strict, cf. CLAUDE.md §7). Aucune clé ici : le JWT
    Supabase est joint en Bearer pour authentifier l'appel.
 ===================================================================== */
-import { CONFIG, CATEGORIES_CHARGE, CATEGORIE_DEFAUT } from "./config.js";
+import { CONFIG } from "./config.js";
 import { getAccessToken } from "./auth.js";
 import { calculerTotaux } from "./ui.js";
+import { PLAN_COMPTABLE_IFRS, COMPTES_PAR_NUMERO, LIBELLE_SECTION } from "./comptes-charge-ifrs.js";
 
-const CODES_CATEGORIE = CATEGORIES_CHARGE.map((c) => c.code);
+// La classification d'une ligne = un COMPTE du plan comptable de référence
+// (js/comptes-charge-ifrs.js). On l'enregistre dans le champ `categorie` de la
+// ligne (compat. base existante), mais sa valeur est désormais un n° de compte.
+const CODES_CATEGORIE = PLAN_COMPTABLE_IFRS.map((c) => c.compte);
 
 // Outil tool_use : force Claude à répondre par un JSON conforme au schéma §7.
 const OUTIL_EXTRACTION = {
@@ -51,8 +55,8 @@ const OUTIL_EXTRACTION = {
             taux_tva: { type: "number", description: "Taux de TVA de la ligne en %, 18 par défaut en CI ; 0 si exonérée." },
             categorie: {
               type: "string",
-              enum: CODES_CATEGORIE,
-              description: "Catégorie de charge par nature (classification IFRS / IAS 1) la plus probable pour cette ligne.",
+              enum: [...CODES_CATEGORIE, ""],
+              description: "Numéro de COMPTE de charge du plan de référence (voir la liste fournie dans le prompt système) dont la NATURE correspond le mieux à cette ligne. Laisse vide (\"\") si aucun compte ne correspond clairement.",
             },
           },
           required: ["designation", "quantite", "prix_unitaire", "montant_ht", "taux_tva", "categorie"],
@@ -84,7 +88,7 @@ const OUTIL_EXTRACTION = {
   },
 };
 
-const SYSTEM = `Tu es un assistant d'extraction de factures fournisseurs pour des PME en Côte d'Ivoire.
+const SYSTEM_BASE = `Tu es un assistant d'extraction de factures fournisseurs pour des PME en Côte d'Ivoire.
 Lis l'image de la facture et renseigne l'outil "enregistrer_facture".
 Règles :
 - Devise par défaut XOF (FCFA). Montants en nombres, sans séparateur de milliers.
@@ -92,11 +96,27 @@ Règles :
 - NCC = Numéro de Compte Contribuable du fournisseur ; laisse vide si introuvable.
 - Dates au format AAAA-MM-JJ ; laisse vide si illisible plutôt que de deviner.
 - Reporte précisément les lignes (désignation, quantité, prix unitaire, montant HT).
-- Pour chaque ligne, choisis la "categorie" de charge par nature (classification IFRS / IAS 1)
-  la plus probable d'après la désignation ; utilise "autres" en cas de doute.
+- Pour chaque ligne, renseigne "categorie" avec le NUMÉRO DE COMPTE du plan de charge de
+  référence (liste ci-dessous) dont la nature correspond le mieux à la désignation. Appuie-toi
+  sur le libellé ET la nature de chaque compte. Si aucun compte ne correspond clairement,
+  laisse "categorie" vide ("") — l'utilisateur classera manuellement.
 - Dans champs_incertains, liste tout champ que tu n'as pas pu lire avec certitude
   (photo floue, manuscrit, ambiguïté) en utilisant des chemins comme "facture.date".
+  Ajoute aussi le chemin de la ligne (ex: "lignes.0.categorie") si le compte choisi est incertain.
 N'écris aucun texte hors de l'appel d'outil.`;
+
+// Référentiel des comptes de charge fourni au modèle pour le classement par ligne.
+// Bloc volumineux mais IDENTIQUE à chaque appel → marqué pour le prompt caching
+// (réduit fortement le coût des extractions suivantes).
+const PLAN_TEXT = `PLAN DE COMPTES DE CHARGES (référentiel interne IFRS / OHADA — secteur logistique / transport / transit).
+Choisis pour chaque ligne le compte dont la NATURE correspond le mieux à la désignation. Format : « numéro — libellé : nature ».
+${PLAN_COMPTABLE_IFRS.map((c) => `- ${c.compte} — ${c.labelFr} [${LIBELLE_SECTION[c.section] || c.section}] : ${c.nature}`).join("\n")}`;
+
+// `system` en tableau de blocs : instructions + référentiel (mis en cache).
+const SYSTEM = [
+  { type: "text", text: SYSTEM_BASE },
+  { type: "text", text: PLAN_TEXT, cache_control: { type: "ephemeral" } },
+];
 
 // Appel bas niveau du proxy, avec timeout et tentatives (réseau CI instable).
 async function appelProxy(payload, { retries = CONFIG.AI_RETRIES } = {}) {
@@ -194,8 +214,8 @@ function normaliser(raw = {}) {
       // Taux de TVA de la ligne : repli sur le taux global puis 18 % (CI).
       taux_tva: l.taux_tva != null ? Number(l.taux_tva)
         : (raw.totaux?.taux_tva != null ? Number(raw.totaux.taux_tva) : CONFIG.TVA_DEFAUT),
-      // Catégorie de charge (IFRS par nature) ; repli "autres" si inconnue.
-      categorie: CODES_CATEGORIE.includes(l.categorie) ? l.categorie : CATEGORIE_DEFAUT,
+      // Compte de charge du plan de référence ; vide ("non classé") si inconnu.
+      categorie: COMPTES_PAR_NUMERO[l.categorie] ? l.categorie : "",
     })) : [],
     totaux: {
       total_ht: Number(raw.totaux?.total_ht) || 0,
