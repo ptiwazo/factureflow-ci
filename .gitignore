@@ -11,6 +11,9 @@ dist/
 *.zip
 verifier.ps1
 
+# Documents de référence internes (ne pas publier sur le site)
+*.xlsx
+
 # OS / éditeurs
 .DS_Store
 Thumbs.db

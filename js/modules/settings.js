@@ -11,6 +11,7 @@ import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
 import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage, getComptesCharge, setComptesCharge } from "./export.js";
 import { CATEGORIES_GROUPES } from "../config.js";
+import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, COMPTES_PAR_NUMERO, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
 export async function render() {
   const p = getProfil();
@@ -99,16 +100,46 @@ export async function render() {
         automatiquement par ligne et utilisé dans l'export FI. ⚠️ Numéros à valider par votre expert-comptable.
         À défaut, le compte de charge par défaut ci-dessus est utilisé.
       </p>
+      <p class="muted" style="font-size:.82rem;margin-top:-2px">
+        Astuce : commencez à taper un numéro ou un mot-clé — les comptes du
+        <strong>plan de référence IFRS / OHADA</strong> (ci-dessous) sont proposés en autocomplétion.
+      </p>
+      <datalist id="dl-plan-comptable">
+        ${PLAN_COMPTABLE_IFRS.map((c) => `<option value="${c.compte}">${esc(c.compte)} — ${esc(c.labelFr)}</option>`).join("")}
+      </datalist>
       <div id="map-charge">
         ${CATEGORIES_GROUPES.map((g) => `
           <div class="section-title" style="margin:14px 0 6px">${g.groupe}</div>
           ${g.items.map((c) => `
             <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
               <span class="grow" style="font-size:.9rem">${c.label}</span>
-              <input data-cat="${c.code}" style="max-width:140px" placeholder="N° compte" />
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+                <input data-cat="${c.code}" list="dl-plan-comptable" style="max-width:160px" placeholder="N° compte" autocomplete="off" />
+                <span class="muted compte-label" data-for="${c.code}" style="font-size:.72rem;max-width:200px;text-align:right"></span>
+              </div>
             </div>`).join("")}`).join("")}
       </div>
       <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
+    </div>
+
+    <div class="card">
+      <h3>Plan comptable de référence (IFRS / OHADA)</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Référentiel officiel interne (contexte logistique / transport / transit, environnement SAP FI).
+        Sert de base pour renseigner les comptes ci-dessus. ${PLAN_COMPTABLE_IFRS.length} comptes,
+        regroupés par section. ⚠️ Imputations à valider par votre expert-comptable.
+      </p>
+      <input id="plan-search" type="search" placeholder="Rechercher (n° compte, libellé, nature…)" style="width:100%;margin-bottom:8px" autocomplete="off" />
+      <div id="plan-liste">${renderPlan("")}</div>
+      <details style="margin-top:14px">
+        <summary style="cursor:pointer;font-weight:600;font-size:.9rem">Règles de contrôle interne SAP (${REGLES_CONTROLE.length})</summary>
+        <div style="margin-top:8px">
+          ${REGLES_CONTROLE.map((r) => `
+            <div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.82rem">
+              <strong>${esc(r.regle)}</strong><br><span class="muted">${esc(r.description)}</span>
+            </div>`).join("")}
+        </div>
+      </details>
     </div>
 
     ${estAdmin ? `<div class="card">
@@ -169,7 +200,21 @@ export async function render() {
 
   // --- Mapping catégorie → compte de charge ---
   const mapCharge = getComptesCharge();
-  $$("#map-charge input[data-cat]").forEach((inp) => { inp.value = mapCharge[inp.dataset.cat] || ""; });
+  const majLibelleCompte = (inp) => {
+    const cible = $(`.compte-label[data-for="${inp.dataset.cat}"]`);
+    if (!cible) return;
+    const ref = COMPTES_PAR_NUMERO[inp.value.trim()];
+    cible.textContent = ref ? `→ ${ref.labelFr}` : "";
+  };
+  $$("#map-charge input[data-cat]").forEach((inp) => {
+    inp.value = mapCharge[inp.dataset.cat] || "";
+    majLibelleCompte(inp);
+    inp.addEventListener("input", () => majLibelleCompte(inp));
+  });
+  // --- Recherche dans le plan comptable de référence ---
+  $("#plan-search").addEventListener("input", (e) => {
+    $("#plan-liste").innerHTML = renderPlan(e.target.value);
+  });
   $("#charge-save").onclick = () => {
     const map = {};
     $$("#map-charge input[data-cat]").forEach((inp) => {
@@ -187,6 +232,45 @@ export async function render() {
   chargerLogs();
 
   $("#btn-deconnexion").onclick = async () => { await deconnexion(); location.reload(); };
+}
+
+// Rendu (filtrable) du plan comptable de référence, groupé par section.
+function renderPlan(filtre) {
+  const q = (filtre || "").trim().toLowerCase();
+  const match = (c) =>
+    !q ||
+    [c.compte, c.labelFr, c.labelEn, c.nature, c.ohada, c.centreCout]
+      .some((v) => (v || "").toLowerCase().includes(q));
+
+  const sections = PLAN_PAR_SECTION
+    .map((s) => ({ ...s, comptes: s.comptes.filter(match) }))
+    .filter((s) => s.comptes.length);
+
+  if (!sections.length) return `<p class="muted" style="font-size:.85rem">Aucun compte ne correspond à « ${esc(filtre)} ».</p>`;
+
+  return sections.map((s) => `
+    <details ${q ? "open" : ""} style="margin-bottom:6px">
+      <summary style="cursor:pointer;font-weight:600;font-size:.88rem">
+        ${esc(s.prefixe)}xxxx — ${esc(s.label)} <span class="muted">(${s.comptes.length})</span>
+      </summary>
+      <div style="margin:6px 0 10px">
+        ${s.comptes.map((c) => `
+          <details style="padding:6px 0;border-bottom:1px solid var(--border)">
+            <summary style="cursor:pointer;font-size:.85rem;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+              <strong style="font-variant-numeric:tabular-nums">${esc(c.compte)}</strong>
+              <span>${esc(c.labelFr)}</span>
+              <span class="muted" style="font-size:.72rem">${esc(c.traitement)}</span>
+            </summary>
+            <div style="font-size:.8rem;margin:6px 0 4px;display:grid;gap:4px">
+              <div><span class="muted">Nature : </span>${esc(c.nature)}</div>
+              ${c.exemples ? `<div><span class="muted">Exemples : </span>${esc(c.exemples)}</div>` : ""}
+              ${c.exclusions ? `<div><span class="muted">${esc(c.exclusions)}</span></div>` : ""}
+              <div><span class="muted">Équivalent OHADA : </span>${esc(c.ohada)}</div>
+              <div><span class="muted">Centre de coût : </span>${esc(c.centreCout)} &nbsp;·&nbsp; <span class="muted">Libellé EN : </span>${esc(c.labelEn)}</div>
+            </div>
+          </details>`).join("")}
+      </div>
+    </details>`).join("");
 }
 
 async function lancerExport(btn, format) {
