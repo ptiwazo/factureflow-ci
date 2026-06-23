@@ -99,6 +99,56 @@ export const CATEGORIES_CHARGE = [
 ];
 export const CATEGORIE_DEFAUT = "autres";
 
+// Correspondance SUGGÉRÉE entre chaque catégorie IFRS (par nature) et un compte
+// du « Plan comptable de référence (IFRS / OHADA) » (js/comptes-charge-ifrs.js).
+// Sert à pré-remplir le mapping dans Réglages via le bouton « Proposer depuis le
+// plan de référence ». ⚠️ Suggestions à VALIDER par un expert-comptable :
+//   - le plan de référence est orienté logistique / transport / transit ;
+//   - certaines catégories n'ont pas d'équivalent direct (marchandises de
+//     revente, immobilisations, « autres ») et restent volontairement non mappées.
+export const MAPPING_IFRS_DEFAUT = {
+  // Achats & stocks
+  matieres:      "51040000", // Matériaux et consommables opérationnels
+  fournitures:   "58508000", // Fournitures de bureau
+  emballages:    "51040000", // Matériaux et consommables opérationnels
+  pieces:        "51030000", // Maintenance, pièces détachées, réparations (op)
+  // Services extérieurs
+  services:      "58507000", // Services professionnels divers
+  honoraires:    "58507000", // Services professionnels divers
+  soustraitance: "51010000", // Sous-traitants opérationnels
+  interim:       "59070000", // Main-d'œuvre temporaire
+  entretien:     "51030000", // Maintenance, pièces détachées, réparations (op)
+  maintenance:   "51000130", // Maintenance préventive
+  nettoyage:     "58504002", // Nettoyage des bureaux
+  securite:      "51000070", // Gardiennage / sécurité externe
+  logiciels:     "58530200", // Logiciels - Autres (licences & SaaS)
+  documentation: "58558000", // Abonnements et cotisations
+  formation:     "58507000", // Services professionnels divers
+  publicite:     "58568000", // Frais de publicité / marketing
+  restauration:  "58566000", // Frais de représentation / réception
+  // Locations
+  loyers:        "58504100", // Loyer de bureaux
+  location_mat:  "51060100", // Location d'équipements et machines
+  // Logistique & déplacements
+  transport:     "51010000", // Sous-traitants opérationnels (transport sur achats)
+  deplacements:  "58540000", // Frais de voyage et déplacement
+  carburant:     "51020000", // Carburant / combustible
+  douane:        "52030000", // Frais de commissionnaire en douane
+  // Énergie & fluides
+  energie:       "51021000", // Électricité (énergie opérationnelle)
+  electricite:   "51021000", // Électricité
+  eau:           "51022000", // Eau
+  // Communications
+  telecom:       "58520200", // Téléphone et autres frais de communication
+  poste:         "58527020", // Frais postaux divers
+  // Financier & autres
+  assurances:    "58570001", // Assurance Responsabilité Civile Générale
+  banque:        "65518000", // Frais et commissions bancaires
+  medical:       "59028000", // Frais médicaux
+  impots:        "58553050", // Autres taxes indirectes
+  // marchandises / immobilisation / autres : pas d'équivalent direct → non mappés
+};
+
 // Catégories regroupées par `groupe`, dans l'ordre d'apparition (pour optgroups
 // et sous-titres). [{ groupe, items: [{code,label,...}] }]
 export const CATEGORIES_GROUPES = CATEGORIES_CHARGE.reduce((acc, c) => {

@@ -10,7 +10,7 @@ import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
 import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage, getComptesCharge, setComptesCharge } from "./export.js";
-import { CATEGORIES_GROUPES } from "../config.js";
+import { CATEGORIES_GROUPES, MAPPING_IFRS_DEFAUT } from "../config.js";
 import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, COMPTES_PAR_NUMERO, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
 export async function render() {
@@ -119,7 +119,11 @@ export async function render() {
               </div>
             </div>`).join("")}`).join("")}
       </div>
-      <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
+      <div class="row wrap" style="gap:10px;margin-top:6px">
+        <button id="charge-suggest" class="btn btn-secondary btn-sm">✨ Proposer depuis le plan de référence</button>
+        <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
+      </div>
+      <p id="charge-info" class="muted" style="font-size:.8rem"></p>
     </div>
 
     <div class="card">
@@ -211,6 +215,25 @@ export async function render() {
     majLibelleCompte(inp);
     inp.addEventListener("input", () => majLibelleCompte(inp));
   });
+  // --- Proposition automatique depuis le plan de référence ---
+  // Remplit uniquement les catégories encore VIDES (ne remplace pas une saisie
+  // existante). L'utilisateur vérifie puis clique « Enregistrer le mapping ».
+  $("#charge-suggest").onclick = () => {
+    let n = 0;
+    $$("#map-charge input[data-cat]").forEach((inp) => {
+      const sugg = MAPPING_IFRS_DEFAUT[inp.dataset.cat];
+      if (sugg && !inp.value.trim()) {
+        inp.value = sugg;
+        majLibelleCompte(inp);
+        n++;
+      }
+    });
+    $("#charge-info").textContent = n
+      ? `${n} compte(s) proposé(s) depuis le plan de référence. Vérifiez, ajustez si besoin, puis enregistrez. ⚠️ À valider par votre expert-comptable.`
+      : "Aucune nouvelle proposition (toutes les catégories mappables sont déjà renseignées).";
+    if (n) toast(`${n} compte(s) proposé(s).`, "success");
+  };
+
   // --- Recherche dans le plan comptable de référence ---
   $("#plan-search").addEventListener("input", (e) => {
     $("#plan-liste").innerHTML = renderPlan(e.target.value);
