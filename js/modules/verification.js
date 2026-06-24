@@ -7,7 +7,7 @@
    explicite de l'utilisateur — aucune validation silencieuse de montants.
 ===================================================================== */
 import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
-import { CONFIG } from "../config.js";
+import { CONFIG, COMPTE_DEBOURS } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
@@ -99,6 +99,7 @@ export function render() {
         <h3>Lignes</h3>
         <button id="add-ligne" class="btn btn-secondary btn-sm">+ Ligne</button>
       </div>
+      ${d.est_debours ? `<div class="alert alert-info">⚓ <div>Fournisseur de transit / armateur / acconier / terminal détecté — les lignes sont imputées au <strong>compte de débours (${esc(COMPTE_DEBOURS)})</strong>. Ajustez si nécessaire.</div></div>` : ""}
       <div style="overflow-x:auto">
       <table class="lignes-table">
         <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th><th>OHADA</th><th></th></tr></thead>

@@ -99,6 +99,20 @@ export const CATEGORIES_CHARGE = [
 ];
 export const CATEGORIE_DEFAUT = "autres";
 
+// Règle métier — DÉBOURS. Les factures de transit maritime / aérien et les
+// fournisseurs de type armateur / acconier / terminal / consignataire sont des
+// avances réglées pour le compte du client : elles s'imputent au COMPTE DE
+// DÉBOURS du plan de référence (et non à une charge propre de l'entreprise).
+export const COMPTE_DEBOURS = "90006000"; // Débours commissionnaire en douane
+// Indices (recherchés dans le NOM du fournisseur, en minuscules) qui déclenchent
+// le débours en complément de la détection par l'IA. Liste ajustable.
+export const INDICES_FOURNISSEUR_DEBOURS = [
+  "armateur", "acconier", "acconage", "consignataire", "consignation",
+  "shipping", "terminal", "maersk", "cma cgm", "cma-cgm",
+  "msc", "cosco", "hapag", "grimaldi", "bolloré", "bollore",
+  "africa global", "apm terminal", "dp world",
+];
+
 // Correspondance SUGGÉRÉE entre chaque catégorie IFRS (par nature) et un compte
 // du « Plan comptable de référence (IFRS / OHADA) » (js/comptes-charge-ifrs.js).
 // Sert à pré-remplir le mapping dans Réglages via le bouton « Proposer depuis le

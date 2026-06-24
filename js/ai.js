@@ -6,7 +6,7 @@
    ci-dessous (schéma strict, cf. CLAUDE.md §7). Aucune clé ici : le JWT
    Supabase est joint en Bearer pour authentifier l'appel.
 ===================================================================== */
-import { CONFIG } from "./config.js";
+import { CONFIG, COMPTE_DEBOURS, INDICES_FOURNISSEUR_DEBOURS } from "./config.js";
 import { getAccessToken } from "./auth.js";
 import { calculerTotaux } from "./ui.js";
 import { PLAN_COMPTABLE_IFRS, COMPTES_PAR_NUMERO, LIBELLE_SECTION } from "./comptes-charge-ifrs.js";
@@ -72,6 +72,10 @@ const OUTIL_EXTRACTION = {
         },
         required: ["total_ht", "taux_tva", "montant_tva", "total_ttc"],
       },
+      est_debours: {
+        type: "boolean",
+        description: "true SI le fournisseur est un armateur, un acconier, un terminal portuaire ou un consignataire, OU si la facture concerne le transit MARITIME ou AÉRIEN (fret, connaissement/BL, manifeste, THC, acconage, consignation). Dans ce cas, toutes les lignes seront imputées au compte de débours. Sinon false.",
+      },
       confiance: {
         type: "object",
         properties: {
@@ -84,7 +88,7 @@ const OUTIL_EXTRACTION = {
         required: ["global", "champs_incertains"],
       },
     },
-    required: ["fournisseur", "facture", "lignes", "totaux", "confiance"],
+    required: ["fournisseur", "facture", "lignes", "totaux", "est_debours", "confiance"],
   },
 };
 
@@ -100,6 +104,11 @@ Règles :
   référence (liste ci-dessous) dont la nature correspond le mieux à la désignation. Appuie-toi
   sur le libellé ET la nature de chaque compte. Si aucun compte ne correspond clairement,
   laisse "categorie" vide ("") — l'utilisateur classera manuellement.
+- RÈGLE DÉBOURS (prioritaire) : si le fournisseur est un ARMATEUR, un ACCONIER, un
+  TERMINAL portuaire ou un CONSIGNATAIRE, OU si la facture concerne le TRANSIT
+  MARITIME OU AÉRIEN (fret, connaissement/BL, manifeste, THC, acconage, consignation),
+  alors mets "est_debours" à true et affecte TOUTES les lignes au compte ${COMPTE_DEBOURS}
+  (Débours, avances pour le compte du client). Sinon "est_debours" = false.
 - Dans champs_incertains, liste tout champ que tu n'as pas pu lire avec certitude
   (photo floue, manuscrit, ambiguïté) en utilisant des chemins comme "facture.date".
   Ajoute aussi le chemin de la ligne (ex: "lignes.0.categorie") si le compte choisi est incertain.
@@ -193,7 +202,14 @@ export async function extraireFacture(source, { complexe = false } = {}) {
 // Garantit la présence de tous les champs attendus et recalcule les totaux
 // pour cohérence (l'IA peut se tromper sur l'arithmétique).
 function normaliser(raw = {}) {
+  // Règle DÉBOURS : déclenchée par l'IA (est_debours) OU par un indice dans le
+  // nom du fournisseur (armateur / acconier / terminal / consignataire…).
+  const nomFourn = (raw.fournisseur?.nom || "").toLowerCase();
+  const indiceDebours = INDICES_FOURNISSEUR_DEBOURS.some((k) => nomFourn.includes(k));
+  const estDebours = raw.est_debours === true || indiceDebours;
+
   const out = {
+    est_debours: estDebours,
     fournisseur: {
       nom: raw.fournisseur?.nom || "",
       ncc: (raw.fournisseur?.ncc || "").trim(),
@@ -214,8 +230,9 @@ function normaliser(raw = {}) {
       // Taux de TVA de la ligne : repli sur le taux global puis 18 % (CI).
       taux_tva: l.taux_tva != null ? Number(l.taux_tva)
         : (raw.totaux?.taux_tva != null ? Number(raw.totaux.taux_tva) : CONFIG.TVA_DEFAUT),
-      // Compte de charge du plan de référence ; vide ("non classé") si inconnu.
-      categorie: COMPTES_PAR_NUMERO[l.categorie] ? l.categorie : "",
+      // Débours prioritaire ; sinon compte du plan de référence (vide si inconnu).
+      categorie: estDebours ? COMPTE_DEBOURS
+        : (COMPTES_PAR_NUMERO[l.categorie] ? l.categorie : ""),
     })) : [],
     totaux: {
       total_ht: Number(raw.totaux?.total_ht) || 0,
