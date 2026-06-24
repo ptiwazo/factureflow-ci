@@ -9,9 +9,8 @@
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
-import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage, getComptesCharge, setComptesCharge } from "./export.js";
-import { CATEGORIES_GROUPES, MAPPING_IFRS_DEFAUT } from "../config.js";
-import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, COMPTES_PAR_NUMERO, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
+import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage } from "./export.js";
+import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
 export async function render() {
   const p = getProfil();
@@ -93,45 +92,12 @@ export async function render() {
     </div>
 
     <div class="card">
-      <h3>Comptes de charge par catégorie (IFRS)</h3>
-      <p class="muted" style="font-size:.85rem;margin-top:-6px">
-        L'IA classe chaque ligne de facture par <strong>nature (IFRS / IAS 1)</strong>.
-        Associez chaque catégorie à <strong>votre numéro de compte</strong> : il sera proposé
-        automatiquement par ligne et utilisé dans l'export FI. ⚠️ Numéros à valider par votre expert-comptable.
-        À défaut, le compte de charge par défaut ci-dessus est utilisé.
-      </p>
-      <p class="muted" style="font-size:.82rem;margin-top:-2px">
-        Astuce : commencez à taper un numéro ou un mot-clé — les comptes du
-        <strong>plan de référence IFRS / OHADA</strong> (ci-dessous) sont proposés en autocomplétion.
-      </p>
-      <datalist id="dl-plan-comptable">
-        ${PLAN_COMPTABLE_IFRS.map((c) => `<option value="${c.compte}">${esc(c.compte)} — ${esc(c.labelFr)}</option>`).join("")}
-      </datalist>
-      <div id="map-charge">
-        ${CATEGORIES_GROUPES.map((g) => `
-          <div class="section-title" style="margin:14px 0 6px">${g.groupe}</div>
-          ${g.items.map((c) => `
-            <div class="row" style="gap:10px;align-items:center;margin-bottom:8px">
-              <span class="grow" style="font-size:.9rem">${c.label}</span>
-              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-                <input data-cat="${c.code}" list="dl-plan-comptable" style="max-width:160px" placeholder="N° compte" autocomplete="off" />
-                <span class="muted compte-label" data-for="${c.code}" style="font-size:.72rem;max-width:200px;text-align:right"></span>
-              </div>
-            </div>`).join("")}`).join("")}
-      </div>
-      <div class="row wrap" style="gap:10px;margin-top:6px">
-        <button id="charge-suggest" class="btn btn-secondary btn-sm">✨ Proposer depuis le plan de référence</button>
-        <button id="charge-save" class="btn btn-primary btn-sm">Enregistrer le mapping</button>
-      </div>
-      <p id="charge-info" class="muted" style="font-size:.8rem"></p>
-    </div>
-
-    <div class="card">
       <h3>Plan comptable de référence (IFRS / OHADA)</h3>
       <p class="muted" style="font-size:.85rem;margin-top:-6px">
-        Référentiel officiel interne (contexte logistique / transport / transit, environnement SAP FI).
-        Sert de base pour renseigner les comptes ci-dessus. ${PLAN_COMPTABLE_IFRS.length} comptes,
-        regroupés par section. ⚠️ Imputations à valider par votre expert-comptable.
+        Référentiel officiel interne (contexte logistique / transport / transit, environnement SAP FI)
+        utilisé pour classer les lignes de facture — le compte est proposé par l'IA d'après ce plan,
+        puis ajustable à l'écran de vérification. ${PLAN_COMPTABLE_IFRS.length} comptes, regroupés par
+        section. ⚠️ Imputations à valider par votre expert-comptable.
       </p>
       <input id="plan-search" type="search" placeholder="Rechercher (n° compte, libellé, nature…)" style="width:100%;margin-bottom:8px" autocomplete="off" />
       <div id="plan-liste">${renderPlan("")}</div>
@@ -202,51 +168,10 @@ export async function render() {
     toast("Comptes SAP enregistrés.", "success");
   };
 
-  // --- Mapping catégorie → compte de charge ---
-  const mapCharge = getComptesCharge();
-  const majLibelleCompte = (inp) => {
-    const cible = $(`.compte-label[data-for="${inp.dataset.cat}"]`);
-    if (!cible) return;
-    const ref = COMPTES_PAR_NUMERO[inp.value.trim()];
-    cible.textContent = ref ? `→ ${ref.labelFr}` : "";
-  };
-  $$("#map-charge input[data-cat]").forEach((inp) => {
-    inp.value = mapCharge[inp.dataset.cat] || "";
-    majLibelleCompte(inp);
-    inp.addEventListener("input", () => majLibelleCompte(inp));
-  });
-  // --- Proposition automatique depuis le plan de référence ---
-  // Remplit uniquement les catégories encore VIDES (ne remplace pas une saisie
-  // existante). L'utilisateur vérifie puis clique « Enregistrer le mapping ».
-  $("#charge-suggest").onclick = () => {
-    let n = 0;
-    $$("#map-charge input[data-cat]").forEach((inp) => {
-      const sugg = MAPPING_IFRS_DEFAUT[inp.dataset.cat];
-      if (sugg && !inp.value.trim()) {
-        inp.value = sugg;
-        majLibelleCompte(inp);
-        n++;
-      }
-    });
-    $("#charge-info").textContent = n
-      ? `${n} compte(s) proposé(s) depuis le plan de référence. Vérifiez, ajustez si besoin, puis enregistrez. ⚠️ À valider par votre expert-comptable.`
-      : "Aucune nouvelle proposition (toutes les catégories mappables sont déjà renseignées).";
-    if (n) toast(`${n} compte(s) proposé(s).`, "success");
-  };
-
   // --- Recherche dans le plan comptable de référence ---
   $("#plan-search").addEventListener("input", (e) => {
     $("#plan-liste").innerHTML = renderPlan(e.target.value);
   });
-  $("#charge-save").onclick = () => {
-    const map = {};
-    $$("#map-charge input[data-cat]").forEach((inp) => {
-      const v = inp.value.trim();
-      if (v) map[inp.dataset.cat] = v;
-    });
-    setComptesCharge(map);
-    toast("Mapping des comptes de charge enregistré.", "success");
-  };
 
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
