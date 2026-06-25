@@ -116,6 +116,38 @@ export function statutBadge(statut) {
   return `<span class="status ${s.cls}">${esc(s.label)}</span>`;
 }
 
+/* ----------------------------- Paiement ---------------------------- */
+export const PAIEMENTS = {
+  a_payer: { label: "À payer", cls: "pay-a_payer" },
+  partiel: { label: "Partiel", cls: "pay-partiel" },
+  paye:    { label: "Payée",   cls: "pay-paye" },
+};
+export function paiementBadge(statut) {
+  const p = PAIEMENTS[statut] || PAIEMENTS.a_payer;
+  return `<span class="status ${p.cls}">${esc(p.label)}</span>`;
+}
+
+// Début de journée (00:00) — base de comparaison des échéances.
+export function debutJour(d = new Date()) {
+  const x = new Date(d); x.setHours(0, 0, 0, 0); return x;
+}
+
+// État de règlement d'une facture (tolère l'absence des colonnes paiement si la
+// migration n'est pas encore appliquée → considéré « à payer »).
+// Retourne { statut, paye, restant, enRetard }.
+export function infoPaiement(f, aujourdhui) {
+  const ttc  = Number(f?.total_ttc) || 0;
+  const paye = Number(f?.montant_paye) || 0;
+  const statut = f?.statut_paiement
+    || (ttc > 0 && paye >= ttc ? "paye" : paye > 0 ? "partiel" : "a_payer");
+  const restant = Math.max(0, Math.round((ttc - paye) * 100) / 100);
+  let enRetard = false;
+  if (statut !== "paye" && f?.echeance) {
+    enRetard = new Date(f.echeance) < (aujourdhui || debutJour());
+  }
+  return { statut, paye, restant, enRetard };
+}
+
 /* ----------------------------- Rendu ------------------------------- */
 export function setView(html) {
   const v = $("#view");

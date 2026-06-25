@@ -76,6 +76,9 @@ create table if not exists public.factures (
   total_ttc       numeric(14,2) not null default 0,
   devise          text not null default 'XOF',
   statut          facture_statut not null default 'a_verifier',
+  statut_paiement text not null default 'a_payer' check (statut_paiement in ('a_payer','partiel','paye')),
+  date_paiement   date,
+  montant_paye    numeric(14,2) not null default 0,
   fichier_url     text,                 -- chemin du fichier dans Storage (bucket "factures")
   extraction_brute jsonb,               -- sortie IA brute, conservée pour audit
   created_at      timestamptz not null default now(),
@@ -85,6 +88,7 @@ create table if not exists public.factures (
 create index if not exists idx_factures_org on public.factures(org_id);
 create index if not exists idx_factures_statut on public.factures(org_id, statut);
 create index if not exists idx_factures_date on public.factures(org_id, date);
+create index if not exists idx_factures_paiement on public.factures(org_id, statut_paiement, echeance);
 create index if not exists idx_factures_fournisseur on public.factures(fournisseur_id);
 
 create table if not exists public.lignes (

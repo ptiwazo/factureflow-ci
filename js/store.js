@@ -269,6 +269,20 @@ export async function majCategoriesLignes(maj) {
   }
 }
 
+// Met à jour le règlement d'une facture (statut_paiement, date, montant payé).
+// `patch` : { statut_paiement, date_paiement, montant_paye }.
+export async function majPaiement(id, patch) {
+  const { data, error } = await supabase.from("factures").update({
+    statut_paiement: patch.statut_paiement,
+    date_paiement: patch.date_paiement || null,
+    montant_paye: patch.montant_paye ?? 0,
+  }).eq("id", id).select("id");
+  if (error) throw error;
+  if (!data || !data.length) {
+    throw new Error("Mise à jour du paiement refusée (droits insuffisants).");
+  }
+}
+
 export async function supprimerFacture(id) {
   // Les lignes sont supprimées en cascade (FK). On retire aussi l'original.
   const f = await getFacture(id);
@@ -334,6 +348,8 @@ export async function statsDashboard() {
 
   let depensesMois = 0, tvaCumulee = 0, aVerifier = 0, nonConformes = 0;
   let aControler = 0, aValider = 0;
+  let montantAPayer = 0, nbAPayer = 0, nbEnRetard = 0;
+  const auj = new Date(); auj.setHours(0, 0, 0, 0);
   const parFournisseur = new Map();
 
   for (const f of factures) {
@@ -342,6 +358,19 @@ export async function statsDashboard() {
     if (f.statut === "a_controler") aControler++;
     if (f.statut === "a_valider") aValider++;
     if (f.statut === "non_conforme") nonConformes++;
+
+    // Suivi des règlements (hors factures écartées). Tolère l'absence des
+    // colonnes paiement (migration non appliquée → considéré « à payer »).
+    if (f.statut !== "non_conforme") {
+      const paye = Number(f.montant_paye) || 0;
+      const pstatut = f.statut_paiement
+        || (ttc > 0 && paye >= ttc ? "paye" : paye > 0 ? "partiel" : "a_payer");
+      if (pstatut !== "paye") {
+        montantAPayer += Math.max(0, ttc - paye);
+        nbAPayer++;
+        if (f.echeance && new Date(f.echeance) < auj) nbEnRetard++;
+      }
+    }
 
     // On comptabilise les dépenses sur les factures non rejetées.
     if (f.statut !== "non_conforme") {
@@ -361,6 +390,7 @@ export async function statsDashboard() {
   return {
     total: factures.length,
     depensesMois, tvaCumulee, aVerifier, aControler, aValider, nonConformes,
+    montantAPayer, nbAPayer, nbEnRetard,
     topFournisseurs,
     recentes: factures.slice(0, 5),
   };

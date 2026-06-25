@@ -169,6 +169,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal-50); b
 .status-validee { background: #DCFCE7; color: var(--success); }
 .status-exportee { background: #DBEAFE; color: #1D4ED8; }
 .status-non_conforme { background: var(--danger-50); color: var(--danger); }
+/* Badges de paiement */
+.status.pay-a_payer { background: #FEF3C7; color: #B45309; }
+.status.pay-partiel { background: #E0F2FE; color: #0369A1; }
+.status.pay-paye { background: #DCFCE7; color: var(--success); }
 
 /* Filtres */
 .filters { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; }

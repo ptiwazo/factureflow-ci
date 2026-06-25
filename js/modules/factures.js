@@ -1,10 +1,10 @@
 /* =====================================================================
    Module 6.4 — Factures : liste, filtres, détail, original consultable
 ===================================================================== */
-import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, openModal, busy } from "../ui.js";
+import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, openModal, busy, toNumber, paiementBadge, infoPaiement } from "../ui.js";
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
-  majCategoriesLignes, supprimerFacture, urlOriginalSignee, journaliser,
+  majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
@@ -119,6 +119,8 @@ export async function renderDetail(id) {
   const peutControler = role === "admin" || role === "controle_gestion";
   const modeControle = peutControler && f.statut === "a_controler";
   const erp = getProfil()?.erp || "sap"; // affiche la colonne OHADA si 'sage'
+  const ip = infoPaiement(f);            // état de règlement
+  const aujISO = new Date().toISOString().slice(0, 10);
   const fourn = f.fournisseurs || {};
 
   setView(`
@@ -170,6 +172,23 @@ export async function renderDetail(id) {
       </div>
     </div>
 
+    <div class="card">
+      <h3>Paiement</h3>
+      <div class="detail-grid">
+        <div><div class="dt">Échéance</div><div class="dd">${dateFr(f.echeance)}${ip.enRetard ? ` <span style="color:var(--danger)">(en retard)</span>` : ""}</div></div>
+        <div><div class="dt">Statut</div><div class="dd">${paiementBadge(ip.statut)}</div></div>
+        <div><div class="dt">Déjà payé</div><div class="dd">${fcfa(ip.paye, f.devise)}</div></div>
+        <div><div class="dt">Restant dû</div><div class="dd">${fcfa(ip.restant, f.devise)}</div></div>
+      </div>
+      ${peutEcrire && ip.statut !== "paye" ? `
+        <div class="row" style="gap:12px;margin-top:8px">
+          <div class="grow field"><label for="pay-date">Date de paiement</label><input id="pay-date" type="date" value="${aujISO}" /></div>
+          <div class="grow field"><label for="pay-montant">Montant réglé</label><input id="pay-montant" type="number" step="0.01" value="${ip.restant}" /></div>
+        </div>
+        <button id="btn-payer" class="btn btn-primary btn-sm">Enregistrer le paiement</button>` : ""}
+      ${peutEcrire && ip.statut !== "a_payer" ? `<button id="btn-annuler-paiement" class="btn btn-ghost btn-sm" style="margin-left:8px">Annuler le paiement</button>` : ""}
+    </div>
+
     <div class="row wrap" style="gap:10px;margin-bottom:24px">
       ${f.fichier_url ? `<button id="btn-original" class="btn btn-secondary">📎 Voir l'original</button>` : ""}
       <button id="btn-pdf" class="btn btn-secondary">📄 PDF récap</button>
@@ -218,6 +237,35 @@ export async function renderDetail(id) {
     try {
       await majStatutFacture(f.id, "a_controler");
       await journaliser("retour_controle", `facture:${f.id}`);
+      renderDetail(f.id);
+    } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+
+  // Paiement : enregistrer un règlement (intégral ou partiel).
+  const bp = $("#btn-payer");
+  if (bp) bp.onclick = async (e) => {
+    const montant = toNumber($("#pay-montant").value);
+    if (montant <= 0) return toast("Montant de paiement invalide.", "warn");
+    const ttc = Number(f.total_ttc) || 0;
+    const nouveauPaye = Math.min(ttc, Math.round((ip.paye + montant) * 100) / 100);
+    const statutP = nouveauPaye >= ttc && ttc > 0 ? "paye" : "partiel";
+    busy(e.currentTarget, true, "Enregistrement…");
+    try {
+      await majPaiement(f.id, { statut_paiement: statutP, date_paiement: $("#pay-date").value || aujISO, montant_paye: nouveauPaye });
+      await journaliser("paiement", `facture:${f.id}`);
+      toast(statutP === "paye" ? "Facture réglée ✔" : "Paiement partiel enregistré.", "success");
+      renderDetail(f.id);
+    } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+
+  // Annulation du paiement (remise à « à payer »).
+  const bap = $("#btn-annuler-paiement");
+  if (bap) bap.onclick = async (e) => {
+    busy(e.currentTarget, true, "…");
+    try {
+      await majPaiement(f.id, { statut_paiement: "a_payer", date_paiement: null, montant_paye: 0 });
+      await journaliser("paiement_annule", `facture:${f.id}`);
+      toast("Paiement annulé.", "info");
       renderDetail(f.id);
     } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
   };

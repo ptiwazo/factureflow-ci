@@ -36,6 +36,10 @@ export async function render() {
         <div class="kpi-label">TVA cumulée</div>
         <div class="kpi-value" style="font-size:1.15rem">${fcfa(s.tvaCumulee)}</div>
       </div>
+      <div class="kpi accent-teal">
+        <div class="kpi-label">Restant à payer</div>
+        <div class="kpi-value" style="font-size:1.15rem">${fcfa(s.montantAPayer)}</div>
+      </div>
       <div class="kpi accent-danger">
         <div class="kpi-label">Non conformes</div>
         <div class="kpi-value">${s.nonConformes}</div>
@@ -46,6 +50,10 @@ export async function render() {
       🧮 <div>${s.aControler} facture(s) en attente de <strong>contrôle de gestion</strong>. <strong>Contrôler →</strong></div></a>` : ""}
     ${s.aValider ? `<a href="#/factures/a_valider" class="alert alert-warn" style="text-decoration:none">
       ✅ <div>${s.aValider} facture(s) prêtes à <strong>valider</strong>. <strong>Valider →</strong></div></a>` : ""}
+    ${s.nbEnRetard ? `<a href="#/echeancier" class="alert alert-danger" style="text-decoration:none">
+      ⏰ <div>${s.nbEnRetard} facture(s) <strong>en retard de paiement</strong>. <strong>Voir l'échéancier →</strong></div></a>`
+      : (s.nbAPayer ? `<a href="#/echeancier" class="alert alert-info" style="text-decoration:none">
+      📅 <div>${s.nbAPayer} facture(s) à régler. <strong>Voir l'échéancier →</strong></div></a>` : "")}
 
     <div class="row between mt">
       <h2 class="section-title" style="margin:0">Dépenses par fournisseur</h2>
@@ -68,8 +76,9 @@ export async function render() {
         </a>`).join("") : emptyState("🧾", "Aucune facture", "Commencez par en capturer une.")}
     </div>
 
-    <div class="center mt" style="margin-bottom:24px">
+    <div class="row mt" style="gap:10px;justify-content:center;margin-bottom:24px">
       <a href="#/capture" class="btn btn-primary">📸 Nouvelle facture</a>
+      <a href="#/echeancier" class="btn btn-secondary">📅 Échéancier</a>
     </div>
   `);
 }
