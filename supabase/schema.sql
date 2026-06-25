@@ -239,19 +239,44 @@ create policy storage_factures_delete on storage.objects
 -- Onboarding : crée une organisation + rattache le 1er utilisateur (admin).
 -- Appelée par le client juste après l'inscription (RPC sécurisée).
 -- ---------------------------------------------------------------------
+-- Onboarding « rejoindre ou créer » : si une organisation porte déjà le même
+-- nom (normalisé : casse + espaces ignorés), le nouvel utilisateur la REJOINT
+-- avec le rôle 'saisie' (le 1er inscrit reste 'admin'). Sinon, l'org est créée
+-- et l'utilisateur en devient 'admin'. SECURITY DEFINER : la recherche d'org
+-- contourne volontairement la RLS (qui ne montrerait que sa propre org).
 create or replace function public.creer_organisation(p_nom text, p_ncc text default null)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_org uuid;
+  v_nom_norm text;
 begin
   if auth.uid() is null then
     raise exception 'Non authentifié';
   end if;
-  -- Un utilisateur déjà rattaché ne peut pas recréer d'org.
+  -- Un utilisateur déjà rattaché ne peut pas recréer/rejoindre.
   if exists (select 1 from public.users where id = auth.uid()) then
     raise exception 'Utilisateur déjà rattaché à une organisation';
   end if;
 
+  v_nom_norm := lower(regexp_replace(btrim(coalesce(p_nom, '')), '\s+', ' ', 'g'));
+  if v_nom_norm = '' then
+    raise exception 'Nom d''organisation requis';
+  end if;
+
+  -- Organisation existante de même nom (normalisé) → rattachement en 'saisie'.
+  select id into v_org
+  from public.organisations
+  where lower(regexp_replace(btrim(nom), '\s+', ' ', 'g')) = v_nom_norm
+  order by created_at
+  limit 1;
+
+  if v_org is not null then
+    insert into public.users(id, org_id, role, email)
+      values (auth.uid(), v_org, 'saisie', (select email from auth.users where id = auth.uid()));
+    return v_org;
+  end if;
+
+  -- Aucune correspondance → création + rôle 'admin'.
   insert into public.organisations(nom, ncc) values (p_nom, p_ncc) returning id into v_org;
   insert into public.users(id, org_id, role, email)
     values (auth.uid(), v_org, 'admin', (select email from auth.users where id = auth.uid()));

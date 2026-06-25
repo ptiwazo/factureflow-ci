@@ -148,7 +148,8 @@ function afficherOnboarding() {
   $("#view").innerHTML = `
     <h1 class="page-title">Dernière étape</h1>
     <div class="card">
-      <p class="muted mb">Créez votre organisation pour commencer à enregistrer vos factures.</p>
+      <p class="muted mb">Indiquez le nom de votre entreprise. Si elle existe déjà,
+        vous la rejoignez automatiquement et accédez aux mêmes factures (saisissez le nom à l'identique).</p>
       <div class="field"><label for="ob-nom">Nom de l'entreprise</label>
         <input id="ob-nom" type="text" placeholder="Ex. Établissements Kouassi" /></div>
       <div class="field"><label for="ob-ncc">NCC <small>(facultatif)</small></label>
