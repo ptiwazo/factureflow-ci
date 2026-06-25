@@ -110,6 +110,18 @@ export async function upsertFournisseur({ nom, ncc, rccm, telephone, compteSap }
   return { action: "cree", fournisseur: data };
 }
 
+/* ---------------------------- Organisation ------------------------- */
+// Définit l'ERP comptable de l'organisation ('sap' | 'sage'). La RLS
+// (`org_admin_update`) réserve cette écriture aux administrateurs.
+export async function majErpOrganisation(erp) {
+  const { data, error } = await supabase
+    .from("organisations").update({ erp }).eq("id", orgId()).select("id");
+  if (error) throw error;
+  if (!data || !data.length) {
+    throw new Error("Modification refusée : rôle administrateur requis.");
+  }
+}
+
 /* ----------------------------- Utilisateurs ------------------------ */
 // Membres de l'organisation (lecture autorisée à tout membre par la RLS).
 export async function listerUtilisateurs() {

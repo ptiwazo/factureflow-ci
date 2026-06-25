@@ -33,6 +33,7 @@ create table if not exists public.organisations (
   nom         text not null,
   ncc         text,
   plan        text not null default 'free',
+  erp         text not null default 'sap' check (erp in ('sap','sage')),  -- ERP comptable (affichage OHADA si 'sage')
   created_at  timestamptz not null default now()
 );
 
@@ -149,10 +150,14 @@ alter table public.factures      enable row level security;
 alter table public.lignes        enable row level security;
 alter table public.logs          enable row level security;
 
--- ORGANISATIONS : on ne voit que la sienne.
+-- ORGANISATIONS : on ne voit que la sienne ; mise à jour réservée à l'admin (ex. ERP).
 drop policy if exists org_select on public.organisations;
 create policy org_select on public.organisations
   for select using (id = public.current_org_id());
+drop policy if exists org_admin_update on public.organisations;
+create policy org_admin_update on public.organisations
+  for update using (id = public.current_org_id() and public.current_role()::text = 'admin')
+  with check (id = public.current_org_id() and public.current_role()::text = 'admin');
 
 -- USERS : on voit les membres de son org ; un admin peut gérer.
 drop policy if exists users_select on public.users;

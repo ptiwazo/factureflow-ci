@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, chargerProfil } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur } from "../store.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majErpOrganisation } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
 // `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
@@ -40,8 +40,27 @@ export async function render() {
         <div><div class="dt">Nom</div><div class="dd">${esc(p?.org_nom || "—")}</div></div>
         <div><div class="dt">Votre rôle</div><div class="dd">${esc(p?.role || "—")}</div></div>
         <div><div class="dt">Compte</div><div class="dd">${esc(p?.user?.email || "—")}</div></div>
+        <div><div class="dt">ERP comptable</div><div class="dd">${(p?.erp || "sap") === "sage" ? "Sage (OHADA)" : "SAP"}</div></div>
       </div>
     </div>
+
+    ${estAdmin ? `<div class="card">
+      <h3>ERP comptable</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Indiquez l'ERP de votre organisation. En mode <strong>Sage</strong>, l'app affiche
+        l'équivalent <strong>OHADA / SYSCOHADA</strong> à côté du compte de charge interne, à
+        l'extraction comme au détail de la facture. Les comptes proposés par l'IA et les exports
+        ne sont pas modifiés. Réglage valable pour toute l'organisation.
+      </p>
+      <div class="field" style="max-width:280px">
+        <label for="erp-select">ERP utilisé</label>
+        <select id="erp-select">
+          <option value="sap">SAP</option>
+          <option value="sage">Sage (OHADA / SYSCOHADA)</option>
+        </select>
+      </div>
+      <button id="erp-save" class="btn btn-primary btn-sm">Enregistrer l'ERP</button>
+    </div>` : ""}
 
     <div class="card">
       <h3>Export comptable</h3>
@@ -136,10 +155,10 @@ export async function render() {
       <p class="muted" style="font-size:.8rem">L'ajout d'un nouvel utilisateur se fait via l'invitation Supabase (MVP) ; son rôle se règle ensuite ici.</p>
     </div>` : ""}
 
-    <div class="card">
+    ${estAdmin ? `<div class="card">
       <h3>Journal d'audit</h3>
       <div id="logs"><span class="spinner dark"></span></div>
-    </div>
+    </div>` : ""}
 
     <div class="center" style="margin-bottom:24px">
       <button id="btn-deconnexion" class="btn btn-danger">Se déconnecter</button>
@@ -152,6 +171,24 @@ export async function render() {
   $("#ex-sage").onclick = (e) => lancerExport(e.currentTarget, "sage");
   $("#ex-sap").onclick = (e) => lancerExport(e.currentTarget, "sap");
   $("#ex-sap-ju").onclick = (e) => lancerExport(e.currentTarget, "sap_ju");
+
+  // --- ERP comptable (admin) ---
+  const erpSel = $("#erp-select");
+  if (erpSel) {
+    erpSel.value = p?.erp || "sap";
+    $("#erp-save").onclick = async (e) => {
+      busy(e.currentTarget, true, "Enregistrement…");
+      try {
+        await majErpOrganisation(erpSel.value);
+        await chargerProfil().catch(() => {});
+        toast("ERP enregistré pour l'organisation.", "success");
+      } catch (err) {
+        toast(err.message || "Échec de l'enregistrement.", "error");
+      } finally {
+        busy(e.currentTarget, false);
+      }
+    };
+  }
 
   // --- Paramètres comptables Sage ---
   const sage = getParamsSage();
@@ -195,8 +232,8 @@ export async function render() {
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
 
-  // --- Logs ---
-  chargerLogs();
+  // --- Logs (admin uniquement) ---
+  if (estAdmin) chargerLogs();
 
   $("#btn-deconnexion").onclick = async () => { await deconnexion(); location.reload(); };
 }

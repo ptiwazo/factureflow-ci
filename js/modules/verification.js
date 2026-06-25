@@ -9,6 +9,7 @@
 import { $, $$, setView, toast, busy, fcfa, dateFr, esc, toNumber, calculerTotaux, ecartCoherence, nccValide } from "../ui.js";
 import { CONFIG, COMPTE_DEBOURS } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
+import { getProfil } from "../auth.js";
 import { draft, navigate, resetDraft } from "../app.js";
 import { analyserCourant } from "./capture.js";
 import { PLAN_PAR_SECTION, COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
@@ -101,8 +102,8 @@ export function render() {
       </div>
       ${d.est_debours ? `<div class="alert alert-info">⚓ <div>Fournisseur de transit / armateur / acconier / terminal détecté — les lignes sont imputées au <strong>compte de débours (${esc(COMPTE_DEBOURS)})</strong>. Ajustez si nécessaire.</div></div>` : ""}
       <div style="overflow-x:auto">
-      <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th><th>OHADA</th><th></th></tr></thead>
+      <table class="lignes-table erp-${getProfil()?.erp || "sap"}">
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th><th class="col-ohada">OHADA</th><th></th></tr></thead>
         <tbody id="lignes-body"></tbody>
       </table>
       </div>
@@ -176,7 +177,7 @@ function ligneRow(l) {
     <td><input class="l-ht" type="number" step="0.01" value="${l.montant_ht || 0}" style="width:96px" /></td>
     <td><input class="l-tva" type="number" step="0.01" value="${tauxLigne}" style="width:56px" /></td>
     <td><select class="l-cat" style="min-width:150px">${OPTIONS_CATEGORIE}</select></td>
-    <td><span class="l-compte muted" style="white-space:nowrap"></span></td>
+    <td class="col-ohada"><span class="l-compte muted" style="white-space:nowrap"></span></td>
     <td><button class="icon-btn l-del" style="color:var(--danger)" title="Supprimer">✕</button></td>`;
 
   const qte = tr.querySelector(".l-qte");

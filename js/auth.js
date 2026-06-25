@@ -60,14 +60,14 @@ export async function chargerProfil() {
 
   const { data, error } = await supabase
     .from("users")
-    .select("org_id, role, organisations(nom)")
+    .select("org_id, role, organisations(nom, erp)")
     .eq("id", session.user.id)
     .maybeSingle();
 
   if (error || !data) {
     // Session valide mais utilisateur non rattaché (ex. confirmation e-mail
     // en attente, ou org non créée). On garde l'user pour permettre l'onboarding.
-    profilCourant = { user: session.user, org_id: null, role: null, org_nom: null };
+    profilCourant = { user: session.user, org_id: null, role: null, org_nom: null, erp: "sap" };
     return profilCourant;
   }
 
@@ -76,6 +76,7 @@ export async function chargerProfil() {
     org_id: data.org_id,
     role: data.role,
     org_nom: data.organisations?.nom || "Mon organisation",
+    erp: data.organisations?.erp || "sap",
   };
   return profilCourant;
 }

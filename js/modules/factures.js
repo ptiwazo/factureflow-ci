@@ -118,6 +118,7 @@ export async function renderDetail(id) {
   // puis valide (a_valider → validee). L'admin a les mêmes droits.
   const peutControler = role === "admin" || role === "controle_gestion";
   const modeControle = peutControler && f.statut === "a_controler";
+  const erp = getProfil()?.erp || "sap"; // affiche la colonne OHADA si 'sage'
   const fourn = f.fournisseurs || {};
 
   setView(`
@@ -146,8 +147,8 @@ export async function renderDetail(id) {
         Confirmez ou corrigez le <strong>compte de charge</strong> proposé par l'IA sur chaque ligne,
         puis cliquez « Confirmer les comptes ». ⚠️ Imputations à valider par un expert-comptable.</div></div>` : ""}
       <div style="overflow-x:auto">
-      <table class="lignes-table">
-        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th></tr></thead>
+      <table class="lignes-table erp-${erp}">
+        <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th><th class="col-ohada">OHADA</th></tr></thead>
         <tbody>
           ${lignes.map((l) => `<tr>
             <td class="col-des">${esc(l.designation)}</td>
@@ -157,7 +158,8 @@ export async function renderDetail(id) {
             <td>${l.taux_tva != null ? l.taux_tva : f.taux_tva}%</td>
             <td>${modeControle
               ? `<select class="cg-cat" data-id="${esc(l.id)}" style="min-width:170px">${optionsComptes(l.categorie)}</select>`
-              : esc(libelleImputation(l.categorie))}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucune ligne</td></tr>`}
+              : esc(libelleImputation(l.categorie))}</td>
+            <td class="col-ohada">${esc(COMPTES_PAR_NUMERO[l.categorie]?.ohada || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucune ligne</td></tr>`}
         </tbody>
       </table>
       </div>

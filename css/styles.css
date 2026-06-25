@@ -202,6 +202,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal-50); b
 .lignes-table th:first-child, .lignes-table td:first-child { text-align: left; }
 .lignes-table input { padding: 8px; font-size: .9rem; }
 .lignes-table .col-des { width: 40%; }
+/* Colonne OHADA/SYSCOHADA : visible uniquement en mode ERP Sage. */
+.lignes-table.erp-sap .col-ohada { display: none; }
 .totaux-box { background: var(--teal-50); border-radius: 12px; padding: 14px; margin-top: 14px; }
 .totaux-row { display: flex; justify-content: space-between; padding: 4px 0; }
 .totaux-row.grand { font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
