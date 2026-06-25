@@ -21,8 +21,12 @@ export async function render() {
 
     <div class="kpi-grid">
       <div class="kpi accent-amber">
-        <div class="kpi-label">À vérifier</div>
-        <div class="kpi-value">${s.aVerifier}</div>
+        <div class="kpi-label">À contrôler</div>
+        <div class="kpi-value">${s.aControler}</div>
+      </div>
+      <div class="kpi accent-amber">
+        <div class="kpi-label">À valider</div>
+        <div class="kpi-value">${s.aValider}</div>
       </div>
       <div class="kpi accent-teal">
         <div class="kpi-label">Dépenses du mois</div>
@@ -38,8 +42,10 @@ export async function render() {
       </div>
     </div>
 
-    ${s.aVerifier ? `<a href="#/factures" class="alert alert-warn" style="text-decoration:none">
-      📌 <div>${s.aVerifier} facture(s) en attente de vérification. <strong>Traiter →</strong></div></a>` : ""}
+    ${s.aControler ? `<a href="#/factures/a_controler" class="alert alert-warn" style="text-decoration:none">
+      🧮 <div>${s.aControler} facture(s) en attente de <strong>contrôle de gestion</strong>. <strong>Contrôler →</strong></div></a>` : ""}
+    ${s.aValider ? `<a href="#/factures/a_valider" class="alert alert-warn" style="text-decoration:none">
+      ✅ <div>${s.aValider} facture(s) prêtes à <strong>valider</strong>. <strong>Valider →</strong></div></a>` : ""}
 
     <div class="row between mt">
       <h2 class="section-title" style="margin:0">Dépenses par fournisseur</h2>

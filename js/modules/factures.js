@@ -4,13 +4,25 @@
 import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, openModal, busy } from "../ui.js";
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
-  supprimerFacture, urlOriginalSignee, journaliser,
+  majCategoriesLignes, supprimerFacture, urlOriginalSignee, journaliser,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
 import { CATEGORIES_CHARGE } from "../config.js";
-import { COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
+import { COMPTES_PAR_NUMERO, PLAN_PAR_SECTION } from "../comptes-charge-ifrs.js";
 import { navigate } from "../app.js";
+
+// <option>/<optgroup> des comptes de charge du plan de référence, avec
+// présélection du compte courant. Utilisé par le Contrôle de Gestion pour
+// confirmer/modifier le compte proposé par l'IA (étape 3 du workflow).
+function optionsComptes(selected) {
+  const sel = COMPTES_PAR_NUMERO[selected] ? selected : "";
+  const opt = (val, label) => `<option value="${esc(val)}"${val === sel ? " selected" : ""}>${esc(label)}</option>`;
+  return opt("", "— Non classé —") +
+    PLAN_PAR_SECTION.map((s) =>
+      `<optgroup label="${esc(s.prefixe)}xxxx — ${esc(s.label)}">${s.comptes.map((c) =>
+        opt(c.compte, `${c.compte} — ${c.labelFr}`)).join("")}</optgroup>`).join("");
+}
 
 // Ancien code de catégorie "par nature" → libellé (rétro-compat).
 const LIBELLE_CATEGORIE = Object.fromEntries(CATEGORIES_CHARGE.map((c) => [c.code, c.label]));
@@ -26,7 +38,8 @@ function libelleImputation(code) {
 
 const FILTRES = [
   { key: "", label: "Toutes" },
-  { key: "a_verifier", label: "À vérifier" },
+  { key: "a_controler", label: "À contrôler" },
+  { key: "a_valider", label: "À valider" },
   { key: "validee", label: "Validées" },
   { key: "exportee", label: "Exportées" },
   { key: "non_conforme", label: "Non conformes" },
@@ -34,7 +47,10 @@ const FILTRES = [
 
 let filtreStatut = "";
 
-export async function renderListe() {
+export async function renderListe(param) {
+  // Filtre passé par l'URL (ex. #/factures/a_controler depuis le tableau de bord).
+  if (param != null && FILTRES.some((f) => f.key === param)) filtreStatut = param;
+
   setView(`
     <div class="row between">
       <h1 class="page-title">Factures</h1>
@@ -98,6 +114,10 @@ export async function renderDetail(id) {
   const role = getProfil()?.role;
   const peutEcrire = role === "admin" || role === "saisie";
   const peutSupprimer = role === "admin";
+  // Contrôle de Gestion : confirme/modifie les comptes (a_controler → a_valider)
+  // puis valide (a_valider → validee). L'admin a les mêmes droits.
+  const peutControler = role === "admin" || role === "controle_gestion";
+  const modeControle = peutControler && f.statut === "a_controler";
   const fourn = f.fournisseurs || {};
 
   setView(`
@@ -122,6 +142,10 @@ export async function renderDetail(id) {
 
     <div class="card">
       <h3>Lignes</h3>
+      ${modeControle ? `<div class="alert alert-info">🧮 <div><strong>Contrôle de Gestion.</strong>
+        Confirmez ou corrigez le <strong>compte de charge</strong> proposé par l'IA sur chaque ligne,
+        puis cliquez « Confirmer les comptes ». ⚠️ Imputations à valider par un expert-comptable.</div></div>` : ""}
+      <div style="overflow-x:auto">
       <table class="lignes-table">
         <thead><tr><th class="col-des">Désignation</th><th>Qté</th><th>P.U.</th><th>Montant HT</th><th>TVA %</th><th>Compte de charge (IFRS)</th></tr></thead>
         <tbody>
@@ -131,9 +155,12 @@ export async function renderDetail(id) {
             <td>${fcfa(l.prix_unitaire, f.devise)}</td>
             <td>${fcfa(l.montant_ht, f.devise)}</td>
             <td>${l.taux_tva != null ? l.taux_tva : f.taux_tva}%</td>
-            <td>${esc(libelleImputation(l.categorie))}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucune ligne</td></tr>`}
+            <td>${modeControle
+              ? `<select class="cg-cat" data-id="${esc(l.id)}" style="min-width:170px">${optionsComptes(l.categorie)}</select>`
+              : esc(libelleImputation(l.categorie))}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucune ligne</td></tr>`}
         </tbody>
       </table>
+      </div>
       <div class="totaux-box">
         <div class="totaux-row"><span>Total HT</span><strong>${fcfa(f.total_ht, f.devise)}</strong></div>
         <div class="totaux-row"><span>TVA (${f.taux_tva}%)</span><strong>${fcfa(f.montant_tva, f.devise)}</strong></div>
@@ -144,6 +171,9 @@ export async function renderDetail(id) {
     <div class="row wrap" style="gap:10px;margin-bottom:24px">
       ${f.fichier_url ? `<button id="btn-original" class="btn btn-secondary">📎 Voir l'original</button>` : ""}
       <button id="btn-pdf" class="btn btn-secondary">📄 PDF récap</button>
+      ${modeControle ? `<button id="btn-confirmer-comptes" class="btn btn-primary">Confirmer les comptes →</button>` : ""}
+      ${peutControler && f.statut === "a_valider" ? `<button id="btn-revoir-comptes" class="btn btn-ghost">← Revoir les comptes</button>
+        <button id="btn-valider-facture" class="btn btn-primary">Valider la facture ✔</button>` : ""}
       ${peutEcrire && f.statut === "non_conforme" ? `<button id="btn-valider" class="btn btn-primary">Marquer validée</button>` : ""}
       ${peutSupprimer ? `<button id="btn-suppr" class="btn btn-danger">Supprimer</button>` : ""}
     </div>
@@ -151,6 +181,44 @@ export async function renderDetail(id) {
 
   if (f.fichier_url) $("#btn-original").onclick = (e) => voirOriginal(e.currentTarget, f.fichier_url);
   $("#btn-pdf").onclick = () => exporterFacturePDF(f, lignes);
+
+  // Contrôle de Gestion — étape 3 : enregistre les comptes confirmés/modifiés
+  // puis passe la facture en « à valider ».
+  const bcc = $("#btn-confirmer-comptes");
+  if (bcc) bcc.onclick = async (e) => {
+    busy(e.currentTarget, true, "Enregistrement…");
+    try {
+      const maj = $$(".cg-cat").map((s) => ({ id: s.dataset.id, categorie: s.value }));
+      await majCategoriesLignes(maj);
+      await majStatutFacture(f.id, "a_valider");
+      await journaliser("controle_comptes", `facture:${f.id}`);
+      toast("Comptes confirmés — facture prête à valider.", "success");
+      renderDetail(f.id);
+    } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+
+  // Contrôle de Gestion — étape 4 : validation finale.
+  const bvf = $("#btn-valider-facture");
+  if (bvf) bvf.onclick = async (e) => {
+    busy(e.currentTarget, true, "Validation…");
+    try {
+      await majStatutFacture(f.id, "validee");
+      await journaliser("validation", `facture:${f.id}`);
+      toast("Facture validée ✔", "success");
+      renderDetail(f.id);
+    } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+
+  // Retour à l'étape de contrôle des comptes (corriger avant validation).
+  const brc = $("#btn-revoir-comptes");
+  if (brc) brc.onclick = async (e) => {
+    busy(e.currentTarget, true, "…");
+    try {
+      await majStatutFacture(f.id, "a_controler");
+      await journaliser("retour_controle", `facture:${f.id}`);
+      renderDetail(f.id);
+    } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
 
   const bv = $("#btn-valider");
   if (bv) bv.onclick = async (e) => {

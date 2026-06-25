@@ -104,6 +104,8 @@ export function ecartCoherence(t) {
 
 export const STATUTS = {
   a_verifier:   { label: "À vérifier",   cls: "status-a_verifier" },
+  a_controler:  { label: "À contrôler",  cls: "status-a_controler" },
+  a_valider:    { label: "À valider",    cls: "status-a_valider" },
   validee:      { label: "Validée",      cls: "status-validee" },
   exportee:     { label: "Exportée",     cls: "status-exportee" },
   non_conforme: { label: "Non conforme", cls: "status-non_conforme" },

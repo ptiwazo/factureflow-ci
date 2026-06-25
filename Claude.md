@@ -125,7 +125,14 @@ logs          (id, org_id, user_id, action, cible, created_at)  -- audit
 ```
 
 Champs systématiques : `created_at`, `updated_at`, `created_by`, `status`.
-Statuts facture : `a_verifier` / `validee` / `exportee` / `non_conforme`.
+Statuts facture : `a_controler` → `a_valider` → `validee` → `exportee` ; `non_conforme` = écartée.
+(`a_verifier` conservé pour compatibilité.)
+
+Workflow Contrôle de Gestion :
+1. Réception / scan + vérification OCR par la **saisie** → `a_controler`
+2. L'IA propose un compte de charge par ligne (plan IFRS/OHADA)
+3. Le **Contrôle de Gestion** confirme/modifie les comptes → `a_valider`
+4. Le **Contrôle de Gestion** valide la facture → `validee` (exportable)
 
 ## 9. Spécificités Côte d'Ivoire (dès le MVP)
 
@@ -141,7 +148,7 @@ Statuts facture : `a_verifier` / `validee` / `exportee` / `non_conforme`.
 
 - Proxy IA : **filtrage origine + vérification JWT Supabase** (refuser tout appel non authentifié → protège la clé Anthropic contre l'abus)
 - **Row Level Security** Postgres : isolation stricte par `org_id`
-- Rôles : `admin` / `saisie` / `lecture`
+- Rôles : `admin` / `saisie` / `controle_gestion` / `lecture` (le Contrôle de Gestion contrôle les comptes ET valide)
 - Originaux en Storage avec **URL signées temporaires**
 - Journal d'audit (`logs`) sur actions sensibles (validation, export, suppression)
 - Aucune clé ou secret côté client ; variables sensibles uniquement côté Netlify/Supabase

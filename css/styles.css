@@ -164,6 +164,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal-50); b
 /* Statuts */
 .status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: .72rem; font-weight: 700; }
 .status-a_verifier { background: var(--warn-bg); color: var(--warn); }
+.status-a_controler { background: #FEF3C7; color: #B45309; }
+.status-a_valider { background: #EDE9FE; color: #6D28D9; }
 .status-validee { background: #DCFCE7; color: var(--success); }
 .status-exportee { background: #DBEAFE; color: #1D4ED8; }
 .status-non_conforme { background: var(--danger-50); color: var(--danger); }

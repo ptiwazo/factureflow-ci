@@ -132,7 +132,7 @@ export function render() {
 
     <div class="row" style="gap:10px;margin-bottom:24px">
       <button id="btn-non-conforme" class="btn btn-secondary grow">Marquer non conforme</button>
-      <button id="btn-valider" class="btn btn-primary grow">Valider →</button>
+      <button id="btn-valider" class="btn btn-primary grow">Envoyer au contrôle →</button>
     </div>
   `);
 
@@ -270,7 +270,9 @@ async function enregistrer(btn, forcerNonConforme) {
 
   const numero = $("#fc-num").value.trim();
   const dateFacture = $("#fc-date").value || null;
-  const statut = (forcerNonConforme || !ncc) ? "non_conforme" : "validee";
+  // Nouveau circuit : après vérification OCR par la saisie, la facture part au
+  // Contrôle de Gestion (statut 'a_controler') au lieu d'être validée directement.
+  const statut = (forcerNonConforme || !ncc) ? "non_conforme" : "a_controler";
 
   busy(btn, true, "Vérification…");
   let doublon = null, existant = null;
@@ -319,7 +321,7 @@ function ouvrirSecondeValidation(ctx) {
   back.innerHTML = `
     <div class="modal">
       <div class="row between mb">
-        <strong>Seconde validation</strong>
+        <strong>Envoi au Contrôle de Gestion</strong>
         <button class="icon-btn" id="vm-close" style="color:var(--text)">✕</button>
       </div>
       <div class="detail-grid mb">
@@ -328,7 +330,7 @@ function ouvrirSecondeValidation(ctx) {
         <div><div class="dt">N° facture</div><div class="dd">${esc(ctx.numero || "—")}</div></div>
         <div><div class="dt">Date</div><div class="dd">${dateFr(ctx.dateFacture)}</div></div>
         <div><div class="dt">Total TTC</div><div class="dd">${fcfa(totauxCourants.total_ttc, ctx.devise)}</div></div>
-        <div><div class="dt">Statut</div><div class="dd">${ctx.statut === "non_conforme" ? "Non conforme" : "Validée"}</div></div>
+        <div><div class="dt">Statut</div><div class="dd">${ctx.statut === "non_conforme" ? "Non conforme" : "À contrôler"}</div></div>
       </div>
       ${nouveau ? `
         <div class="alert alert-info">🆕 <div>Nouveau fournisseur. Renseignez son <strong>compte SAP (CardCode)</strong> pour l'export FI (facultatif, modifiable plus tard).</div></div>
@@ -337,7 +339,7 @@ function ouvrirSecondeValidation(ctx) {
       : `<p class="muted" style="font-size:.85rem">Fournisseur existant${compteExistant ? ` — compte SAP : <strong>${esc(compteExistant)}</strong>` : " (sans compte SAP)"}.</p>`}
       <div class="row" style="gap:10px;margin-top:8px">
         <button class="btn btn-ghost grow" id="vm-cancel">Modifier</button>
-        <button class="btn btn-primary grow" id="vm-ok">Confirmer l'enregistrement</button>
+        <button class="btn btn-primary grow" id="vm-ok">Envoyer au contrôle de gestion</button>
       </div>
     </div>`;
   document.body.appendChild(back);
@@ -383,8 +385,8 @@ async function sauvegarder(ctx) {
     extractionBrute: draft.data,
   });
 
-  await journaliser(ctx.statut === "non_conforme" ? "facture_non_conforme" : "validation", `facture:${facture.id}`);
-  toast(ctx.statut === "non_conforme" ? "Enregistrée (non conforme)." : "Facture validée ✔", "success");
+  await journaliser(ctx.statut === "non_conforme" ? "facture_non_conforme" : "envoi_controle", `facture:${facture.id}`);
+  toast(ctx.statut === "non_conforme" ? "Enregistrée (non conforme)." : "Envoyée au contrôle de gestion ✔", "success");
 
   // Données de la facture courante traitées : on les nettoie.
   draft.data = null; draft.fichier = null; draft.apercu = null;

@@ -222,6 +222,17 @@ export async function majStatutFacture(id, statut) {
   if (error) throw error;
 }
 
+// Met à jour le compte de charge (categorie) de plusieurs lignes.
+// `maj` : [{ id, categorie }]. Utilisé par le Contrôle de Gestion à l'étape de
+// confirmation/modification des comptes proposés par l'IA.
+export async function majCategoriesLignes(maj) {
+  for (const { id, categorie } of maj || []) {
+    const { error } = await supabase.from("lignes")
+      .update({ categorie: (categorie || "").trim() || null }).eq("id", id);
+    if (error) throw error;
+  }
+}
+
 export async function supprimerFacture(id) {
   // Les lignes sont supprimées en cascade (FK). On retire aussi l'original.
   const f = await getFacture(id);
@@ -286,11 +297,14 @@ export async function statsDashboard() {
   const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
 
   let depensesMois = 0, tvaCumulee = 0, aVerifier = 0, nonConformes = 0;
+  let aControler = 0, aValider = 0;
   const parFournisseur = new Map();
 
   for (const f of factures) {
     const ttc = Number(f.total_ttc) || 0;
     if (f.statut === "a_verifier") aVerifier++;
+    if (f.statut === "a_controler") aControler++;
+    if (f.statut === "a_valider") aValider++;
     if (f.statut === "non_conforme") nonConformes++;
 
     // On comptabilise les dépenses sur les factures non rejetées.
@@ -310,7 +324,7 @@ export async function statsDashboard() {
 
   return {
     total: factures.length,
-    depensesMois, tvaCumulee, aVerifier, nonConformes,
+    depensesMois, tvaCumulee, aVerifier, aControler, aValider, nonConformes,
     topFournisseurs,
     recentes: factures.slice(0, 5),
   };

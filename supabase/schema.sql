@@ -14,11 +14,14 @@ create extension if not exists "pgcrypto";
 -- Types énumérés
 -- ---------------------------------------------------------------------
 do $$ begin
-  create type user_role as enum ('admin', 'saisie', 'lecture');
+  create type user_role as enum ('admin', 'saisie', 'controle_gestion', 'lecture');
 exception when duplicate_object then null; end $$;
 
+-- Circuit : a_verifier (héritage) / a_controler → a_valider → validee → exportee ;
+-- non_conforme = écartée. Voir supabase/migration_workflow.sql pour les bases existantes.
 do $$ begin
-  create type facture_statut as enum ('a_verifier', 'validee', 'exportee', 'non_conforme');
+  create type facture_statut as enum
+    ('a_verifier', 'a_controler', 'a_valider', 'validee', 'exportee', 'non_conforme');
 exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------
@@ -169,14 +172,14 @@ create policy fourn_write on public.fournisseurs
   for all using (org_id = public.current_org_id() and public.current_role() in ('admin','saisie'))
   with check (org_id = public.current_org_id() and public.current_role() in ('admin','saisie'));
 
--- FACTURES : lecture par org ; écriture si rôle admin/saisie.
+-- FACTURES : lecture par org ; écriture si rôle admin/saisie/controle_gestion.
 drop policy if exists fact_select on public.factures;
 create policy fact_select on public.factures
   for select using (org_id = public.current_org_id());
 drop policy if exists fact_write on public.factures;
 create policy fact_write on public.factures
-  for all using (org_id = public.current_org_id() and public.current_role() in ('admin','saisie'))
-  with check (org_id = public.current_org_id() and public.current_role() in ('admin','saisie'));
+  for all using (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion'))
+  with check (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion'));
 
 -- LIGNES : rattachées à une facture de l'org.
 drop policy if exists lignes_select on public.lignes;
@@ -189,11 +192,11 @@ create policy lignes_write on public.lignes
   for all using (exists (
     select 1 from public.factures f
     where f.id = lignes.facture_id and f.org_id = public.current_org_id()
-      and public.current_role() in ('admin','saisie')))
+      and public.current_role()::text in ('admin','saisie','controle_gestion')))
   with check (exists (
     select 1 from public.factures f
     where f.id = lignes.facture_id and f.org_id = public.current_org_id()
-      and public.current_role() in ('admin','saisie')));
+      and public.current_role()::text in ('admin','saisie','controle_gestion')));
 
 -- LOGS : lecture par org ; insertion par tout membre de l'org.
 drop policy if exists logs_select on public.logs;
