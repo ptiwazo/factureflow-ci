@@ -31,13 +31,24 @@
       <form id="auth-form" autocomplete="on" novalidate>
         <!-- Champs d'inscription uniquement -->
         <div class="signup-only field hidden">
+          <label>Votre entreprise</label>
+          <div class="row" style="gap:16px">
+            <label class="row" style="gap:6px;font-weight:400"><input type="radio" name="org-mode" value="create" checked style="width:auto" /> Créer une entreprise</label>
+            <label class="row" style="gap:6px;font-weight:400"><input type="radio" name="org-mode" value="join" style="width:auto" /> Rejoindre</label>
+          </div>
+        </div>
+        <div class="signup-only org-create field hidden">
           <label for="org-nom">Nom de l'entreprise</label>
           <input id="org-nom" name="org-nom" type="text" placeholder="Ex. Établissements Kouassi" />
-          <small class="muted">Si l'entreprise existe déjà, vous la rejoignez et voyez les mêmes factures. Saisissez le nom à l'identique.</small>
         </div>
-        <div class="signup-only field hidden">
+        <div class="signup-only org-create field hidden">
           <label for="org-ncc">NCC de l'entreprise <small>(facultatif)</small></label>
           <input id="org-ncc" name="org-ncc" type="text" placeholder="Numéro de Compte Contribuable" />
+        </div>
+        <div class="signup-only org-join field hidden">
+          <label for="org-code">Code d'invitation</label>
+          <input id="org-code" name="org-code" type="text" placeholder="Code reçu de votre administrateur" autocomplete="off" style="text-transform:uppercase" />
+          <small class="muted">Rejoignez une entreprise existante avec le code fourni par son administrateur (vous serez en rôle « Saisie »).</small>
         </div>
 
         <div class="field">

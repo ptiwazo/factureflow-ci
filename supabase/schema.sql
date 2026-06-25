@@ -29,13 +29,16 @@ exception when duplicate_object then null; end $$;
 -- ---------------------------------------------------------------------
 
 create table if not exists public.organisations (
-  id          uuid primary key default gen_random_uuid(),
-  nom         text not null,
-  ncc         text,
-  plan        text not null default 'free',
-  erp         text not null default 'sap' check (erp in ('sap','sage')),  -- ERP comptable (affichage OHADA si 'sage')
-  created_at  timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  nom             text not null,
+  ncc             text,
+  plan            text not null default 'free',
+  erp             text not null default 'sap' check (erp in ('sap','sage')),  -- ERP comptable (affichage OHADA si 'sage')
+  code_invitation text,                 -- code secret de rattachement (rejoindre l'org)
+  created_at      timestamptz not null default now()
 );
+create unique index if not exists uq_org_code_invitation
+  on public.organisations(code_invitation) where code_invitation is not null;
 
 -- Lie un utilisateur Supabase Auth (auth.users.id) à une organisation + rôle.
 create table if not exists public.users (
@@ -248,46 +251,64 @@ create policy storage_factures_delete on storage.objects
 -- Onboarding : crée une organisation + rattache le 1er utilisateur (admin).
 -- Appelée par le client juste après l'inscription (RPC sécurisée).
 -- ---------------------------------------------------------------------
--- Onboarding « rejoindre ou créer » : si une organisation porte déjà le même
--- nom (normalisé : casse + espaces ignorés), le nouvel utilisateur la REJOINT
--- avec le rôle 'saisie' (le 1er inscrit reste 'admin'). Sinon, l'org est créée
--- et l'utilisateur en devient 'admin'. SECURITY DEFINER : la recherche d'org
--- contourne volontairement la RLS (qui ne montrerait que sa propre org).
+-- Génère un code d'invitation unique (8 caractères).
+create or replace function public.gen_code_invitation()
+returns text language plpgsql security definer set search_path = public as $$
+declare c text;
+begin
+  loop
+    c := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+    exit when not exists (select 1 from public.organisations where code_invitation = c);
+  end loop;
+  return c;
+end $$;
+
+-- Onboarding — CRÉATION d'une organisation (l'utilisateur devient 'admin').
+-- Un code d'invitation est généré pour permettre à d'autres de la REJOINDRE.
 create or replace function public.creer_organisation(p_nom text, p_ncc text default null)
 returns uuid language plpgsql security definer set search_path = public as $$
-declare
-  v_org uuid;
-  v_nom_norm text;
+declare v_org uuid;
 begin
-  if auth.uid() is null then
-    raise exception 'Non authentifié';
-  end if;
-  -- Un utilisateur déjà rattaché ne peut pas recréer/rejoindre.
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
   if exists (select 1 from public.users where id = auth.uid()) then
-    raise exception 'Utilisateur déjà rattaché à une organisation';
-  end if;
+    raise exception 'Utilisateur déjà rattaché à une organisation'; end if;
+  if btrim(coalesce(p_nom, '')) = '' then raise exception 'Nom d''organisation requis'; end if;
 
-  v_nom_norm := lower(regexp_replace(btrim(coalesce(p_nom, '')), '\s+', ' ', 'g'));
-  if v_nom_norm = '' then
-    raise exception 'Nom d''organisation requis';
-  end if;
-
-  -- Organisation existante de même nom (normalisé) → rattachement en 'saisie'.
-  select id into v_org
-  from public.organisations
-  where lower(regexp_replace(btrim(nom), '\s+', ' ', 'g')) = v_nom_norm
-  order by created_at
-  limit 1;
-
-  if v_org is not null then
-    insert into public.users(id, org_id, role, email)
-      values (auth.uid(), v_org, 'saisie', (select email from auth.users where id = auth.uid()));
-    return v_org;
-  end if;
-
-  -- Aucune correspondance → création + rôle 'admin'.
-  insert into public.organisations(nom, ncc) values (p_nom, p_ncc) returning id into v_org;
+  insert into public.organisations(nom, ncc, code_invitation)
+    values (p_nom, p_ncc, public.gen_code_invitation())
+    returning id into v_org;
   insert into public.users(id, org_id, role, email)
     values (auth.uid(), v_org, 'admin', (select email from auth.users where id = auth.uid()));
   return v_org;
+end $$;
+
+-- Rattachement à une organisation existante via son CODE D'INVITATION (rôle 'saisie').
+create or replace function public.rejoindre_organisation(p_code text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_org uuid;
+begin
+  if auth.uid() is null then raise exception 'Non authentifié'; end if;
+  if exists (select 1 from public.users where id = auth.uid()) then
+    raise exception 'Utilisateur déjà rattaché à une organisation'; end if;
+
+  select id into v_org from public.organisations
+   where code_invitation = upper(btrim(coalesce(p_code, '')));
+  if v_org is null then raise exception 'Code d''invitation invalide'; end if;
+
+  insert into public.users(id, org_id, role, email)
+    values (auth.uid(), v_org, 'saisie', (select email from auth.users where id = auth.uid()));
+  return v_org;
+end $$;
+
+-- Rotation du code d'invitation (admin uniquement).
+create or replace function public.regenerer_code_invitation()
+returns text language plpgsql security definer set search_path = public as $$
+declare v_org uuid; v_code text;
+begin
+  v_org := public.current_org_id();
+  if v_org is null then raise exception 'Non rattaché à une organisation'; end if;
+  if public.current_role()::text <> 'admin' then raise exception 'Réservé à l''administrateur'; end if;
+  v_code := public.gen_code_invitation();
+  update public.organisations set code_invitation = v_code where id = v_org;
+  return v_code;
 end $$;

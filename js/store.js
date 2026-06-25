@@ -111,6 +111,22 @@ export async function upsertFournisseur({ nom, ncc, rccm, telephone, compteSap }
 }
 
 /* ---------------------------- Organisation ------------------------- */
+// Renvoie la fiche de l'organisation courante (select * → tolère l'absence de
+// colonnes récentes comme code_invitation si la migration n'est pas appliquée).
+export async function getOrganisationCourante() {
+  const { data, error } = await supabase
+    .from("organisations").select("*").eq("id", orgId()).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// Régénère le code d'invitation de l'organisation (admin uniquement, via RPC).
+export async function regenererCodeInvitation() {
+  const { data, error } = await supabase.rpc("regenerer_code_invitation");
+  if (error) throw error;
+  return data; // nouveau code
+}
+
 // Définit l'ERP comptable de l'organisation ('sap' | 'sage'). La RLS
 // (`org_admin_update`) réserve cette écriture aux administrateurs.
 export async function majErpOrganisation(erp) {

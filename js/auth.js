@@ -28,23 +28,33 @@ export async function connexion(email, password) {
   return data.user;
 }
 
-// Inscription : crée le compte Auth puis l'organisation (RPC sécurisée),
-// ce qui rattache l'utilisateur comme admin.
-export async function inscription(email, password, orgNom, orgNcc) {
+// Inscription : crée le compte Auth puis rattache l'utilisateur à une
+// organisation selon `opts.mode` : 'create' (devient admin) ou 'join' (rejoint
+// via un code d'invitation, rôle saisie).
+// opts = { mode:'create'|'join', orgNom, orgNcc, code }
+export async function inscription(email, password, opts = {}) {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw new Error(traduireErreur(error.message));
 
   // Selon la config Supabase, une confirmation e-mail peut être requise.
-  // Si une session est active immédiatement, on crée l'organisation.
+  // Si une session est active immédiatement, on effectue le rattachement.
   const { data: sess } = await supabase.auth.getSession();
   if (sess?.session) {
-    const { error: rpcErr } = await supabase.rpc("creer_organisation", {
-      p_nom: orgNom, p_ncc: orgNcc || null,
-    });
-    if (rpcErr) throw new Error("Compte créé mais organisation non initialisée : " + rpcErr.message);
+    const err = await rattacher(opts);
+    if (err) throw new Error("Compte créé mais rattachement non finalisé : " + err);
   }
   // needConfirmation = pas de session après inscription (confirmation e-mail exigée).
   return { user: data.user, session: sess?.session || null, needConfirmation: !sess?.session };
+}
+
+// Appelle le bon RPC selon le mode. Renvoie un message d'erreur ou null.
+async function rattacher({ mode, orgNom, orgNcc, code } = {}) {
+  if (mode === "join") {
+    const { error } = await supabase.rpc("rejoindre_organisation", { p_code: code });
+    return error ? traduireErreur(error.message) : null;
+  }
+  const { error } = await supabase.rpc("creer_organisation", { p_nom: orgNom, p_ncc: orgNcc || null });
+  return error ? traduireErreur(error.message) : null;
 }
 
 export async function deconnexion() {
@@ -95,7 +105,14 @@ export async function creerOrganisation(orgNom, orgNcc) {
   const { error } = await supabase.rpc("creer_organisation", {
     p_nom: orgNom, p_ncc: orgNcc || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(traduireErreur(error.message));
+  return chargerProfil();
+}
+
+// Rejoint une organisation existante via son code d'invitation (rôle saisie).
+export async function rejoindreOrganisation(code) {
+  const { error } = await supabase.rpc("rejoindre_organisation", { p_code: code });
+  if (error) throw new Error(traduireErreur(error.message));
   return chargerProfil();
 }
 
@@ -118,6 +135,13 @@ function traduireErreur(msg = "") {
   if (m.includes("already registered")) return "Cet e-mail est déjà utilisé.";
   if (m.includes("signups not allowed") || m.includes("signup is disabled"))
     return "Les inscriptions sont désactivées sur le projet Supabase (à activer dans Authentication).";
+  if (m.includes("invitation invalide") || m.includes("code d'invitation"))
+    return "Code d'invitation invalide. Vérifiez-le auprès de l'administrateur de l'organisation.";
+  if (m.includes("déjà rattaché")) return "Ce compte est déjà rattaché à une organisation.";
+  if (m.includes("nom d'organisation requis") || m.includes("nom d''organisation"))
+    return "Indiquez le nom de l'entreprise.";
+  if (m.includes("could not find the function") || m.includes("does not exist"))
+    return "Fonctionnalité non encore activée côté serveur (migration à appliquer).";
   if (m.includes("password")) return "Mot de passe trop court (6 caractères minimum).";
   if (m.includes("email")) return "Adresse e-mail invalide.";
   return msg || "Une erreur est survenue.";

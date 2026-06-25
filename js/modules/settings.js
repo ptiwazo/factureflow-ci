@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, chargerProfil } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majErpOrganisation } from "../store.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majErpOrganisation, getOrganisationCourante, regenererCodeInvitation } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
 // `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
@@ -145,6 +145,21 @@ export async function render() {
     </div>
 
     ${estAdmin ? `<div class="card">
+      <h3>Inviter des membres</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Partagez ce <strong>code d'invitation</strong> avec vos collègues. À l'inscription, ils choisissent
+        « Rejoindre une entreprise » et saisissent ce code pour accéder aux mêmes factures (rôle « Saisie »
+        par défaut, ajustable ci-dessous). Régénérez-le si besoin : l'ancien code cesse alors de fonctionner.
+      </p>
+      <div class="row" style="gap:8px;align-items:flex-end">
+        <div class="grow field"><label for="inv-code">Code d'invitation</label>
+          <input id="inv-code" readonly value="…" style="font-weight:700;letter-spacing:2px;text-transform:uppercase" /></div>
+        <button id="inv-copy" class="btn btn-secondary btn-sm">Copier</button>
+        <button id="inv-regen" class="btn btn-ghost btn-sm">Régénérer</button>
+      </div>
+    </div>` : ""}
+
+    ${estAdmin ? `<div class="card">
       <h3>Utilisateurs &amp; rôles</h3>
       <p class="muted" style="font-size:.85rem;margin-top:-6px">
         Attribuez un rôle à chaque membre. <strong>Contrôle de Gestion</strong> = contrôle des
@@ -229,6 +244,9 @@ export async function render() {
     $("#plan-liste").innerHTML = renderPlan(e.target.value);
   });
 
+  // --- Invitation (admin) ---
+  if (estAdmin) chargerInvitation();
+
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
 
@@ -310,6 +328,30 @@ async function lancerExport(btn, format) {
   } finally {
     busy(btn, false);
   }
+}
+
+async function chargerInvitation() {
+  const input = $("#inv-code");
+  if (!input) return;
+  try {
+    const org = await getOrganisationCourante();
+    input.value = org?.code_invitation || "(migration requise)";
+  } catch { input.value = "(indisponible)"; }
+
+  $("#inv-copy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("#inv-code").value); toast("Code copié.", "success"); }
+    catch { toast("Copie impossible — sélectionnez le code à la main.", "warn"); }
+  };
+  $("#inv-regen").onclick = async (e) => {
+    if (!confirm("Régénérer le code d'invitation ? L'ancien ne fonctionnera plus.")) return;
+    busy(e.currentTarget, true, "…");
+    try {
+      const nouveau = await regenererCodeInvitation();
+      $("#inv-code").value = nouveau;
+      toast("Nouveau code d'invitation généré.", "success");
+    } catch (err) { toast(err.message || "Échec de la régénération.", "error"); }
+    finally { busy(e.currentTarget, false); }
+  };
 }
 
 async function chargerUsers() {
