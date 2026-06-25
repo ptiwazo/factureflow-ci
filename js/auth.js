@@ -96,6 +96,11 @@ export async function chargerProfil() {
     .from("organisations").select("erp").eq("id", data.org_id).maybeSingle();
   if (org?.erp) profilCourant.erp = org.erp;
 
+  // Super admin de plateforme (best-effort : tolère l'absence de la fonction).
+  profilCourant.superAdmin = false;
+  const { data: sa } = await supabase.rpc("is_super_admin");
+  if (sa === true) profilCourant.superAdmin = true;
+
   return profilCourant;
 }
 

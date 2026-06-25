@@ -120,9 +120,18 @@ export async function getOrganisationCourante() {
   return data;
 }
 
-// Régénère le code d'invitation de l'organisation (admin uniquement, via RPC).
-export async function regenererCodeInvitation() {
-  const { data, error } = await supabase.rpc("regenerer_code_invitation");
+// Liste toutes les organisations — réservé au super admin (RLS org_superadmin_all
+// l'autorise à voir au-delà de sa propre org).
+export async function listerOrganisations() {
+  const { data, error } = await supabase
+    .from("organisations").select("id, nom, ncc, code_invitation, created_at").order("nom");
+  if (error) throw error;
+  return data || [];
+}
+
+// Génère / régénère le code d'invitation d'une organisation (super admin, via RPC).
+export async function superadminGenererCode(orgId) {
+  const { data, error } = await supabase.rpc("superadmin_generer_code", { p_org: orgId });
   if (error) throw error;
   return data; // nouveau code
 }

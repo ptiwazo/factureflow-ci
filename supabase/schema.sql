@@ -147,10 +147,21 @@ returns user_role language sql stable security definer set search_path = public 
   select role from public.users where id = auth.uid();
 $$;
 
+-- Super admin de plateforme (gère les codes d'invitation de toutes les orgs).
+create table if not exists public.super_admins (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create or replace function public.is_super_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.super_admins where user_id = auth.uid());
+$$;
+
 -- ---------------------------------------------------------------------
 -- Row Level Security
 -- ---------------------------------------------------------------------
 alter table public.organisations enable row level security;
+alter table public.super_admins  enable row level security;
 alter table public.users         enable row level security;
 alter table public.fournisseurs  enable row level security;
 alter table public.factures      enable row level security;
@@ -165,6 +176,15 @@ drop policy if exists org_admin_update on public.organisations;
 create policy org_admin_update on public.organisations
   for update using (id = public.current_org_id() and public.current_role()::text = 'admin')
   with check (id = public.current_org_id() and public.current_role()::text = 'admin');
+-- Super admin : accès à toutes les organisations (gestion des codes).
+drop policy if exists org_superadmin_all on public.organisations;
+create policy org_superadmin_all on public.organisations
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
+
+-- SUPER ADMINS : un utilisateur ne voit que sa propre appartenance.
+drop policy if exists super_admins_self on public.super_admins;
+create policy super_admins_self on public.super_admins
+  for select using (user_id = auth.uid());
 
 -- USERS : on voit les membres de son org ; un admin peut gérer.
 drop policy if exists users_select on public.users;
@@ -300,15 +320,15 @@ begin
   return v_org;
 end $$;
 
--- Rotation du code d'invitation (admin uniquement).
-create or replace function public.regenerer_code_invitation()
+-- Génération/rotation d'un code d'invitation pour une organisation donnée.
+-- Réservé au SUPER ADMIN de plateforme (cf. table super_admins).
+create or replace function public.superadmin_generer_code(p_org uuid)
 returns text language plpgsql security definer set search_path = public as $$
-declare v_org uuid; v_code text;
+declare v_code text;
 begin
-  v_org := public.current_org_id();
-  if v_org is null then raise exception 'Non rattaché à une organisation'; end if;
-  if public.current_role()::text <> 'admin' then raise exception 'Réservé à l''administrateur'; end if;
+  if not public.is_super_admin() then raise exception 'Réservé au super administrateur'; end if;
   v_code := public.gen_code_invitation();
-  update public.organisations set code_invitation = v_code where id = v_org;
+  update public.organisations set code_invitation = v_code where id = p_org;
+  if not found then raise exception 'Organisation introuvable'; end if;
   return v_code;
 end $$;
