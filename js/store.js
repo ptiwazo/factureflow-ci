@@ -120,10 +120,18 @@ export async function listerUtilisateurs() {
 }
 
 // Change le rôle d'un utilisateur de l'org. La RLS (`users_admin_write`)
-// n'autorise cette écriture qu'aux administrateurs.
+// n'autorise cette écriture qu'aux administrateurs. On demande le retour de la
+// ligne (`select`) : si la RLS refuse, l'update renvoie 0 ligne SANS erreur
+// PostgREST — on le détecte pour signaler clairement le refus plutôt que de
+// laisser croire à un succès silencieux.
 export async function majRoleUtilisateur(id, role) {
-  const { error } = await supabase.from("users").update({ role }).eq("id", id);
+  const { data, error } = await supabase
+    .from("users").update({ role }).eq("id", id).select("id");
   if (error) throw error;
+  if (!data || !data.length) {
+    throw new Error("Modification refusée : rôle administrateur requis. " +
+      "Si votre rôle a changé récemment, déconnectez-vous puis reconnectez-vous.");
+  }
 }
 
 /* ------------------------------ Factures --------------------------- */

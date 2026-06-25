@@ -7,7 +7,7 @@
    - Journal d'audit (logs)
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
-import { getProfil, deconnexion } from "../auth.js";
+import { getProfil, deconnexion, chargerProfil } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
@@ -22,6 +22,9 @@ import { exporterCSV, exporterExcel, exporterSAP, exporterSAPJournalUpload, expo
 import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
 export async function render() {
+  // Rafraîchit le profil (rôle) depuis la base : évite d'afficher la gestion des
+  // rôles avec un rôle 'admin' périmé (ex. après une fusion d'organisations).
+  await chargerProfil().catch(() => {});
   const p = getProfil();
   const estAdmin = p?.role === "admin";
   const moisDebut = new Date(); moisDebut.setDate(1);
