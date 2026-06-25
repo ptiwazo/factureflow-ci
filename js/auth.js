@@ -60,7 +60,7 @@ export async function chargerProfil() {
 
   const { data, error } = await supabase
     .from("users")
-    .select("org_id, role, organisations(nom, erp)")
+    .select("org_id, role, organisations(nom)")
     .eq("id", session.user.id)
     .maybeSingle();
 
@@ -76,8 +76,16 @@ export async function chargerProfil() {
     org_id: data.org_id,
     role: data.role,
     org_nom: data.organisations?.nom || "Mon organisation",
-    erp: data.organisations?.erp || "sap",
+    erp: "sap",
   };
+
+  // ERP en best-effort : tolère l'absence de la colonne `erp` (migration_erp.sql
+  // pas encore appliquée). En cas d'erreur, on conserve le repli 'sap' sans
+  // jamais faire échouer le chargement du profil.
+  const { data: org } = await supabase
+    .from("organisations").select("erp").eq("id", data.org_id).maybeSingle();
+  if (org?.erp) profilCourant.erp = org.erp;
+
   return profilCourant;
 }
 
