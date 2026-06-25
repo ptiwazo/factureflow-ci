@@ -19,6 +19,7 @@ import * as verification from "./modules/verification.js";
 import * as factures     from "./modules/factures.js";
 import * as fournisseurs from "./modules/fournisseurs.js";
 import * as echeancier   from "./modules/echeancier.js";
+import * as tva          from "./modules/tva.js";
 import * as settings     from "./modules/settings.js";
 
 // Brouillon d'extraction partagé entre capture et vérification.
@@ -43,6 +44,7 @@ const routes = {
   fournisseurs:    (p) => fournisseurs.renderListe(p),
   fournisseur:     (p) => fournisseurs.renderDetail(p),
   echeancier:      (p) => echeancier.render(p),
+  tva:             (p) => tva.render(p),
   settings:        (p) => settings.render(p),
 };
 
