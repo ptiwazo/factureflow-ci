@@ -7,8 +7,17 @@
    - Journal d'audit (logs)
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
-import { getProfil, deconnexion, supabase } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
+import { getProfil, deconnexion } from "../auth.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur } from "../store.js";
+
+// Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
+// `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
+const ROLES = [
+  { key: "admin", label: "Administrateur" },
+  { key: "controle_gestion", label: "Contrôle de Gestion" },
+  { key: "saisie", label: "Saisie" },
+  { key: "lecture", label: "Lecture seule" },
+];
 import { exporterCSV, exporterExcel, exporterSAP, exporterSAPJournalUpload, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage } from "./export.js";
 import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
@@ -114,9 +123,14 @@ export async function render() {
     </div>
 
     ${estAdmin ? `<div class="card">
-      <h3>Utilisateurs</h3>
+      <h3>Utilisateurs &amp; rôles</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Attribuez un rôle à chaque membre. <strong>Contrôle de Gestion</strong> = contrôle des
+        comptes de charge puis validation des factures ; <strong>Saisie</strong> = scan + vérification ;
+        <strong>Lecture seule</strong> = consultation. Vous ne pouvez pas modifier votre propre rôle.
+      </p>
       <div id="users"><span class="spinner dark"></span></div>
-      <p class="muted" style="font-size:.8rem">L'ajout d'utilisateurs se fait via l'invitation Supabase (MVP).</p>
+      <p class="muted" style="font-size:.8rem">L'ajout d'un nouvel utilisateur se fait via l'invitation Supabase (MVP) ; son rôle se règle ensuite ici.</p>
     </div>` : ""}
 
     <div class="card">
@@ -260,13 +274,43 @@ async function lancerExport(btn, format) {
 
 async function chargerUsers() {
   const cible = $("#users");
+  const moi = getProfil()?.user?.id;
   try {
-    const { data, error } = await supabase.from("users").select("email, role, created_at").order("created_at");
-    if (error) throw error;
-    cible.innerHTML = (data || []).map((u) => `
-      <div class="row between" style="padding:6px 0;border-bottom:1px solid var(--border)">
-        <span>${esc(u.email || "—")}</span><span class="status status-validee">${esc(u.role)}</span>
-      </div>`).join("") || `<p class="muted">Aucun utilisateur.</p>`;
+    const users = await listerUtilisateurs();
+    if (!users.length) { cible.innerHTML = `<p class="muted">Aucun utilisateur.</p>`; return; }
+
+    cible.innerHTML = users.map((u) => {
+      const estMoi = u.id === moi;
+      const options = ROLES.map((r) =>
+        `<option value="${r.key}"${r.key === u.role ? " selected" : ""}>${esc(r.label)}</option>`).join("");
+      return `
+        <div class="row between" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || "—")}${estMoi ? " <span class=\"muted\">(vous)</span>" : ""}</span>
+          <select class="role-select" data-id="${esc(u.id)}" data-prev="${esc(u.role)}" ${estMoi ? "disabled title=\"Vous ne pouvez pas modifier votre propre rôle\"" : ""} style="min-width:170px">
+            ${options}
+          </select>
+        </div>`;
+    }).join("");
+
+    // Changement de rôle (réservé admin par la RLS ; on bloque l'auto-modification).
+    $$(".role-select", cible).forEach((sel) => {
+      sel.addEventListener("change", async () => {
+        const id = sel.dataset.id;
+        const nouveau = sel.value;
+        const precedent = sel.dataset.prev;
+        sel.disabled = true;
+        try {
+          await majRoleUtilisateur(id, nouveau);
+          sel.dataset.prev = nouveau;
+          toast("Rôle mis à jour.", "success");
+        } catch (e) {
+          sel.value = precedent; // rollback visuel
+          toast(e.message || "Échec de la mise à jour du rôle.", "error");
+        } finally {
+          sel.disabled = false;
+        }
+      });
+    });
   } catch (e) {
     cible.innerHTML = `<p class="muted">Indisponible : ${esc(e.message)}</p>`;
   }

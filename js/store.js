@@ -110,6 +110,22 @@ export async function upsertFournisseur({ nom, ncc, rccm, telephone, compteSap }
   return { action: "cree", fournisseur: data };
 }
 
+/* ----------------------------- Utilisateurs ------------------------ */
+// Membres de l'organisation (lecture autorisée à tout membre par la RLS).
+export async function listerUtilisateurs() {
+  const { data, error } = await supabase
+    .from("users").select("id, email, role, created_at").order("created_at");
+  if (error) throw error;
+  return data || [];
+}
+
+// Change le rôle d'un utilisateur de l'org. La RLS (`users_admin_write`)
+// n'autorise cette écriture qu'aux administrateurs.
+export async function majRoleUtilisateur(id, role) {
+  const { error } = await supabase.from("users").update({ role }).eq("id", id);
+  if (error) throw error;
+}
+
 /* ------------------------------ Factures --------------------------- */
 export async function listerFactures({ statut, fournisseurId, debut, fin } = {}) {
   let q = supabase.from("factures")
