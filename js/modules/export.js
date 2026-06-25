@@ -12,6 +12,7 @@ import { fcfa, dateFr, esc } from "../ui.js";
 import { journaliser, getLignes } from "../store.js";
 import { getProfil } from "../auth.js";
 import { COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
+import { telechargerXlsx } from "../xlsx.js";
 
 // En-têtes du relevé comptable.
 const COLS = [
@@ -284,6 +285,141 @@ export async function exporterSAP(factures) {
 
   telecharger(contenu, `sap_fi_${horodatage()}.csv`, "text/csv;charset=utf-8");
   await journaliser("export_sap_fi", `${factures.length} factures`);
+}
+
+/* ---------------- SAP — Journal Upload (.xlsx, template LOG_0100) --- */
+// Reproduit fidèlement le template « JOURNAL_UPLOAD_TEMPLATE_LOG_0100
+// FOURNISSEUR » : 112 colonnes, 2 lignes d'en-tête (libellés conviviaux
+// puis noms techniques SAP), une ligne par poste d'écriture à partir de la 3e.
+// Chaque facture = un document FI en partie double :
+//   - débit charge (BSCHL 40, KOART S) : une ligne par article ;
+//   - débit TVA déductible (BSCHL 40, KOART S) si TVA ;
+//   - crédit fournisseur TTC (BSCHL 31, KOART K, LIFNR = compte SAP fournisseur).
+// ⚠️ Les comptes, code TVA et type de pièce proviennent des Réglages SAP de
+// l'organisation : l'app n'invente aucun paramétrage comptable.
+
+// Ordre EXACT des 112 colonnes (noms techniques = ligne 2 du template).
+const SAP_JU_FIELDS = [
+  "BUKRS", "XBLNR", "BARCODE", "BLART", "BKTXT", "BLDAT", "BUDAT", "LDGRP", "MONAT", "VALUT",
+  "KURSF", "XREF1_HD", "XREF2_HD", "XNEG", "ZZFIRSTAPPOVER", "BSCHL", "SAKNR", "LIFNR", "KUNNR", "KOART",
+  "UMSKZ", "WAERS", "WRBTR", "DMBTR", "SHKZG", "RCOMP", "XREF", "AUFNR", "KOSTL", "PRCTR",
+  "BUPLA", "KSCHL", "KTOSL", "MWSKZ", "WMWST", "MWSTS", "FWBAS", "HWBAS", "WT_TAX_TYPE", "WTAX",
+  "WT_AMOUNT", "WT_AMOUNT_LC", "WT_BASE_AMT_TC", "WT_BASE_AMT_LC", "TXJCD", "ZFBDT", "ZTERM", "ZLSCH", "ZLSPR", "ZUONR",
+  "RSTGR", "SGTXT", "MEINS", "MENGE", "XREF1", "XREF2", "XREF3", "ZZCHRCD", "ZZOBLN", "ZZBLN",
+  "ZZEVSL", "ZZEVYG", "ZZEVID", "ZZIVSL", "ZZIVYG", "ZZIVID", "ZZCTNN", "ZZMCURR", "ZZMAMT", "ZZPRT",
+  "ZZALOC", "ZZEXPCD", "ZZTRM", "ZZPONUMBER", "ZZSRDATE", "ZZSRSDATE", "ZZSREDATE", "COPA_KOSTL", "WWACT", "WWBL",
+  "WWBND", "WWBST", "WWBUC", "WWCLT", "WWCNC", "WWCNF", "WWCNI", "WWCNS", "WWCNT", "WWCOM",
+  "WWCTN", "WWHLD", "WWMOR", "WWMSO", "WWOTP", "WWPLR", "WWRPR", "WWRPT", "WWRTE", "WWSCT",
+  "WWSRC", "WWSVC", "VAT", "XSNET", "LONG_HEADER_TEXT_ID", "LONG_HEADER_TEXT_LANG", "LONG_HEADER_TEXT", "SECCO", "HSN_SAC", "PLC_SUP",
+  "GST_PART", "WWLCA",
+];
+
+// Libellés conviviaux (ligne 1 du template), même ordre que SAP_JU_FIELDS.
+const SAP_JU_LABELS = [
+  "Comp. Code", "Reference No.", "W/ Barcode", "Doc. Type", "Header Text", "Doc. Date", "Posting Date", "Ledger Group", "Fiscal Month", "Value Date",
+  "Exchange Rate", "Reference Key 1", "Reference Key 2", "Negative Posting", "First Approver", "Posting Key", "Account No.", "Vendor", "Customer", "Account Type",
+  "Special G/L", "Trn Currency", "Trn. Amt", "Ccode Amt", "D/C Ind.", "Trading Partner", "Reference Key", "Internal Order", "Cost Ctr.", "Profit Ctr.",
+  "Business Place", "Condition Type", "Transaction Type", "Tax Code", "Tax Amount - Trn Currency", "Tax Amount - Local Currency", "Tax Amount Base - Trn Currency", "Tax Amount Base - Local Currency", "Withholding Tax Type", "Withholding Tax Code",
+  "Withholding Tax Amount - Trn Currency", "Withholding Tax Amount - Local Currency", "Withholding Tax Base Amt - Trn Currency", "Withholding Tax Base Amt - Local Currency", "Tax Jurisdiction Code", "Baseline Date", "Payment Term", "Pay Mth.", "Pay. Block", "Assignment",
+  "Reason Code for Payments", "Line Item Text", "Base Unit of Measure", "Quantity", "Reference 1", "Reference 2", "Reference 3", "Charge code", "Original B/L Number", "B/L",
+  "Export Vessel", "Export Voyage No", "Export Voyage ID", "Import Vessel", "Import Voyage No", "Import Voyage ID", "Container number", "Manifested currency", "Manifested amount", "Port",
+  "Allocation Number", "Expense Code", "Terminal/Depot Code", "External PO number", "Service Rendered Date", "Service rendered start date", "Service rendered end date", "Cost center", "Activity Code", "Bill of Lading",
+  "Bundle", "Business Type", "BU Country", "Client type", "Container Category", "Full/Empty", "Container ISO Code", "Container Size", "Container Type", "Commodity",
+  "Container Number", "Holding", "Operation reference", "Sales order", "Orig.Tr.Partner", "Pillar Code", "Period/year", "Repair type", "Route", "Subcontracting",
+  "Service Country", "Service Code", "Tax Code", "G/L account amounts entered exclude tax", "Header Text - ID", "Header Text - Language", "Header Text", "Section Code", "HSN/SAC Code", "Place of Supply",
+  "GST Partner Code", "Local Attribute  - Marco Polo Logistics",
+];
+
+// ISO (yyyy-mm-dd) -> jj/mm/aaaa attendu par le template. Renvoie "" si vide.
+function dateSap(iso) {
+  if (!iso) return "";
+  const [a, m, j] = String(iso).slice(0, 10).split("-");
+  return j && m && a ? `${j}/${m}/${a}` : String(iso);
+}
+// Numéro de mois (1-12) à partir d'une date ISO, pour MONAT (Fiscal Month).
+function moisSap(iso) {
+  const m = String(iso || "").slice(5, 7);
+  return m ? Number(m) : "";
+}
+
+export async function exporterSAPJournalUpload(factures) {
+  const c = getParamsSAP();
+  if (!c.compteCharge) {
+    throw new Error("Configurez d'abord le compte de charge dans Réglages → Paramètres comptables SAP.");
+  }
+  // Le crédit fournisseur utilise le compte SAP (LIFNR) propre à chaque fiche.
+  const sansCompte = [...new Set(
+    factures.filter((f) => !(f.fournisseurs?.compte_sap || "").trim())
+            .map((f) => f.fournisseurs?.nom || "Fournisseur inconnu")
+  )];
+  if (sansCompte.length) {
+    throw new Error("Compte SAP fournisseur manquant pour : " + sansCompte.join(", ") +
+      ". Renseignez-le sur la fiche fournisseur avant l'export.");
+  }
+
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+  // Construit une ligne d'écriture : objet partiel -> tableau aligné sur SAP_JU_FIELDS.
+  const ligne = (champs) => SAP_JU_FIELDS.map((f) => (f in champs ? champs[f] : ""));
+
+  const lignes = [SAP_JU_LABELS, SAP_JU_FIELDS]; // 2 lignes d'en-tête
+  for (const f of factures) {
+    const bldat = dateSap(f.date);
+    const budat = bldat;                 // date de comptabilisation = date pièce
+    const monat = moisSap(f.date);
+    const devise = f.devise || "XOF";
+    const nomFourn = f.fournisseurs?.nom || "";
+    const ref = f.numero || "";
+    const ttc = round2(f.total_ttc);
+    const tva = round2(f.montant_tva);
+    const compteFourn = (f.fournisseurs?.compte_sap || "").trim();
+    const bktxt = `${nomFourn}${ref ? " " + ref : ""}`.trim().slice(0, 25);
+
+    // Champs d'en-tête répétés sur chaque poste du document.
+    const entete = {
+      BUKRS: c.societe, XBLNR: ref, BLART: c.typePiece, BKTXT: bktxt,
+      BLDAT: bldat, BUDAT: budat, MONAT: monat, WAERS: devise, ZFBDT: bldat,
+    };
+
+    let articles = [];
+    try { articles = await getLignes(f.id); } catch { articles = []; }
+
+    // Débit charge : une ligne par article (compte selon catégorie IFRS).
+    if (articles.length) {
+      for (const a of articles) {
+        const compteL = comptePourCategorie(a.categorie) || c.compteCharge;
+        const taxe = (a.taux_tva != null ? a.taux_tva : f.taux_tva) ? c.codeTva : "";
+        lignes.push(ligne({
+          ...entete, BSCHL: "40", KOART: "S", SAKNR: compteL, SHKZG: "D",
+          WRBTR: round2(a.montant_ht), DMBTR: round2(a.montant_ht),
+          MWSKZ: taxe, SGTXT: (a.designation || nomFourn).slice(0, 50),
+        }));
+      }
+    } else {
+      lignes.push(ligne({
+        ...entete, BSCHL: "40", KOART: "S", SAKNR: c.compteCharge, SHKZG: "D",
+        WRBTR: round2(f.total_ht), DMBTR: round2(f.total_ht),
+        MWSKZ: c.codeTva, SGTXT: nomFourn.slice(0, 50),
+      }));
+    }
+
+    // Débit TVA déductible (montant total de TVA de la facture).
+    if (tva > 0 && c.compteTva) {
+      lignes.push(ligne({
+        ...entete, BSCHL: "40", KOART: "S", SAKNR: c.compteTva, SHKZG: "D",
+        WRBTR: tva, DMBTR: tva, MWSKZ: c.codeTva, SGTXT: "TVA deductible",
+      }));
+    }
+
+    // Crédit fournisseur (TTC) — LIFNR = compte SAP de la fiche fournisseur.
+    lignes.push(ligne({
+      ...entete, BSCHL: "31", KOART: "K", LIFNR: compteFourn, SHKZG: "C",
+      WRBTR: ttc, DMBTR: ttc, SGTXT: nomFourn.slice(0, 50),
+    }));
+  }
+
+  telechargerXlsx(`sap_journal_upload_${horodatage()}.xlsx`, "Journal Upload", lignes);
+  await journaliser("export_sap_journal_upload", `${factures.length} factures`);
 }
 
 /* --------------------------- PDF récap ----------------------------- */

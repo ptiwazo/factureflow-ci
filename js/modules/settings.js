@@ -9,7 +9,7 @@
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, supabase } from "../auth.js";
 import { listerFactures, listerLogs, majStatutFacture } from "../store.js";
-import { exporterCSV, exporterExcel, exporterSAP, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage } from "./export.js";
+import { exporterCSV, exporterExcel, exporterSAP, exporterSAPJournalUpload, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage } from "./export.js";
 import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
 
 export async function render() {
@@ -46,6 +46,7 @@ export async function render() {
         <button id="ex-xls" class="btn btn-secondary grow">⬇ Excel</button>
         <button id="ex-sage" class="btn btn-secondary grow">⬇ Sage (écritures)</button>
         <button id="ex-sap" class="btn btn-secondary grow">⬇ SAP (écritures FI)</button>
+        <button id="ex-sap-ju" class="btn btn-secondary grow">⬇ SAP Journal Upload (.xlsx)</button>
       </div>
       <label class="row" style="gap:8px;margin-top:12px;font-size:.85rem">
         <input id="ex-marquer" type="checkbox" style="width:auto" />
@@ -133,6 +134,7 @@ export async function render() {
   $("#ex-xls").onclick = (e) => lancerExport(e.currentTarget, "xls");
   $("#ex-sage").onclick = (e) => lancerExport(e.currentTarget, "sage");
   $("#ex-sap").onclick = (e) => lancerExport(e.currentTarget, "sap");
+  $("#ex-sap-ju").onclick = (e) => lancerExport(e.currentTarget, "sap_ju");
 
   // --- Paramètres comptables Sage ---
   const sage = getParamsSage();
@@ -236,6 +238,7 @@ async function lancerExport(btn, format) {
     }
     if (format === "csv") await exporterCSV(exportables);
     else if (format === "sap") await exporterSAP(exportables);
+    else if (format === "sap_ju") await exporterSAPJournalUpload(exportables);
     else if (format === "sage") await exporterSageEcritures(exportables);
     else await exporterExcel(exportables);
 
