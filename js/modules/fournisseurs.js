@@ -83,7 +83,7 @@ export async function renderDetail(id) {
       <div class="field"><label for="e-nom">Nom</label><input id="e-nom" value="${esc(f.nom)}" ${peutEcrire ? "" : "disabled"} /></div>
       <div class="field ${f.ncc && !nccValide(f.ncc) ? "uncertain" : ""}">
         <label for="e-ncc">NCC</label><input id="e-ncc" value="${esc(f.ncc || "")}" ${peutEcrire ? "" : "disabled"} />
-        <div class="uncertain-flag">⚠️ Format inhabituel</div>
+        <div class="uncertain-flag">⚠️ Format NCC inattendu — attendu : 7 chiffres + 1 lettre (ex. 9502363N)</div>
       </div>
       <div class="row" style="gap:12px">
         <div class="grow field"><label for="e-rccm">RCCM</label><input id="e-rccm" value="${esc(f.rccm || "")}" ${peutEcrire ? "" : "disabled"} /></div>

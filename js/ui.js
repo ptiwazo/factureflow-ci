@@ -68,13 +68,14 @@ export function debounce(fn, delay = 300) {
 }
 
 /* ------------------------ Métier Côte d'Ivoire --------------------- */
-// Validation souple du format NCC ivoirien. Le format exact relève de la
-// DGI ; on contrôle ici une forme plausible (lettres/chiffres, 7-15 car.).
-// ⚠️ La conformité réelle est à valider par un professionnel / la DGI.
+// Validation du FORMAT du NCC, alignée sur la règle officielle de la FNE (DGI) :
+// 7 chiffres suivis d'une lettre majuscule (ex. 9502363N). On tolère un préfixe
+// « CC » et les espaces (conventions de saisie courantes). ⚠️ Ceci ne contrôle
+// que la forme ; l'existence réelle du NCC relève de la DGI (e-impôts / FNE).
 export function nccValide(ncc) {
   if (!ncc) return false;
   const v = String(ncc).trim().toUpperCase().replace(/\s/g, "");
-  return /^[0-9A-Z]{7,15}$/.test(v);
+  return /^(CC)?\d{7}[A-Z]$/.test(v);
 }
 
 // Recalcule les totaux à partir des lignes. La TVA est calculée PAR LIGNE

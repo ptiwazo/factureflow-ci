@@ -247,7 +247,7 @@ function majAlertes() {
     alertes.push(`<div class="alert alert-danger">⛔ <div><strong>NCC fournisseur absent.</strong>
       Facture potentiellement <strong>non conforme</strong> (obligation DGI). À confirmer avec un professionnel.</div></div>`);
   } else if (!nccValide(ncc)) {
-    alertes.push(`<div class="alert alert-warn">⚠️ <div>Le format du NCC paraît inhabituel. Vérifiez la saisie.</div></div>`);
+    alertes.push(`<div class="alert alert-warn">⚠️ <div>Format de NCC inattendu (format FNE/DGI : <strong>7 chiffres + 1 lettre</strong>, ex. 9502363N). Vérifiez la saisie.</div></div>`);
   }
   box.innerHTML = alertes.join("");
 }
