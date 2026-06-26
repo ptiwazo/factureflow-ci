@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, chargerProfil } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majErpOrganisation, getOrganisationCourante } from "../store.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majActifUtilisateur, majErpOrganisation, getOrganisationCourante } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
 // `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
@@ -360,14 +360,18 @@ async function chargerUsers() {
 
     cible.innerHTML = users.map((u) => {
       const estMoi = u.id === moi;
+      const actif = u.actif !== false;
       const options = ROLES.map((r) =>
         `<option value="${r.key}"${r.key === u.role ? " selected" : ""}>${esc(r.label)}</option>`).join("");
       return `
-        <div class="row between" style="gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || "—")}${estMoi ? " <span class=\"muted\">(vous)</span>" : ""}</span>
-          <select class="role-select" data-id="${esc(u.id)}" data-prev="${esc(u.role)}" ${estMoi ? "disabled title=\"Vous ne pouvez pas modifier votre propre rôle\"" : ""} style="min-width:170px">
-            ${options}
-          </select>
+        <div class="row between wrap" style="gap:8px;padding:8px 0;border-bottom:1px solid var(--border);${actif ? "" : "opacity:.6"}">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || "—")}${estMoi ? " <span class=\"muted\">(vous)</span>" : ""}${actif ? "" : " <span style=\"color:var(--danger)\">désactivé</span>"}</span>
+          <div class="row" style="gap:8px">
+            <select class="role-select" data-id="${esc(u.id)}" data-prev="${esc(u.role)}" ${estMoi || !actif ? "disabled" : ""} style="min-width:150px">
+              ${options}
+            </select>
+            ${estMoi ? "" : `<button class="btn ${actif ? "btn-ghost" : "btn-secondary"} btn-sm actif-toggle" data-id="${esc(u.id)}" data-actif="${actif}">${actif ? "Désactiver" : "Réactiver"}</button>`}
+          </div>
         </div>`;
     }).join("");
 
@@ -388,6 +392,21 @@ async function chargerUsers() {
         } finally {
           sel.disabled = false;
         }
+      });
+    });
+
+    // Activation / désactivation (admin ; impossible sur soi-même).
+    $$(".actif-toggle", cible).forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const nouvelEtat = btn.dataset.actif !== "true"; // bascule
+        if (!nouvelEtat && !confirm("Désactiver ce compte ? L'utilisateur perdra immédiatement l'accès.")) return;
+        busy(btn, true, "…");
+        try {
+          await majActifUtilisateur(id, nouvelEtat);
+          toast(nouvelEtat ? "Compte réactivé." : "Compte désactivé.", "success");
+          chargerUsers();
+        } catch (e) { busy(btn, false); toast(e.message || "Échec.", "error"); }
       });
     });
   } catch (e) {

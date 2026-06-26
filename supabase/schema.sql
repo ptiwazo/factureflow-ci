@@ -46,6 +46,7 @@ create table if not exists public.users (
   org_id      uuid not null references public.organisations(id) on delete cascade,
   role        user_role not null default 'saisie',
   email       text,
+  actif       boolean not null default true,   -- désactivable par l'admin (coupe l'accès)
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_users_org on public.users(org_id);
@@ -139,7 +140,7 @@ create trigger trg_factures_updated before update on public.factures
 -- ---------------------------------------------------------------------
 create or replace function public.current_org_id()
 returns uuid language sql stable security definer set search_path = public as $$
-  select org_id from public.users where id = auth.uid();
+  select org_id from public.users where id = auth.uid() and actif = true;
 $$;
 
 create or replace function public.current_role()
@@ -189,7 +190,7 @@ create policy super_admins_self on public.super_admins
 -- USERS : on voit les membres de son org ; un admin peut gérer.
 drop policy if exists users_select on public.users;
 create policy users_select on public.users
-  for select using (org_id = public.current_org_id());
+  for select using (org_id = public.current_org_id() or id = auth.uid());
 drop policy if exists users_admin_write on public.users;
 create policy users_admin_write on public.users
   for all using (org_id = public.current_org_id() and public.current_role() = 'admin')

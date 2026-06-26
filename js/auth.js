@@ -68,16 +68,17 @@ export async function chargerProfil() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) { profilCourant = null; return null; }
 
+  // select * : tolère l'absence de colonnes récentes (ex. actif) avant migration.
   const { data, error } = await supabase
     .from("users")
-    .select("org_id, role, organisations(nom)")
+    .select("*, organisations(nom)")
     .eq("id", session.user.id)
     .maybeSingle();
 
   if (error || !data) {
     // Session valide mais utilisateur non rattaché (ex. confirmation e-mail
     // en attente, ou org non créée). On garde l'user pour permettre l'onboarding.
-    profilCourant = { user: session.user, org_id: null, role: null, org_nom: null, erp: "sap" };
+    profilCourant = { user: session.user, org_id: null, role: null, org_nom: null, erp: "sap", actif: true };
     return profilCourant;
   }
 
@@ -87,6 +88,7 @@ export async function chargerProfil() {
     role: data.role,
     org_nom: data.organisations?.nom || "Mon organisation",
     erp: "sap",
+    actif: data.actif !== false, // undefined (pré-migration) → considéré actif
   };
 
   // ERP en best-effort : tolère l'absence de la colonne `erp` (migration_erp.sql

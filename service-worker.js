@@ -6,7 +6,7 @@
    Le support offline complet des données est prévu en Phase 3 ; ici on
    ne met JAMAIS en cache les appels Supabase ni le proxy IA.
 ===================================================================== */
-const CACHE = "factureflow-ci-v19";
+const CACHE = "factureflow-ci-v20";
 
 // Shell statique. (Les modules JS sont chargés dynamiquement ; on met en
 // cache l'essentiel et on laisse le réseau gérer le reste avec repli cache.)

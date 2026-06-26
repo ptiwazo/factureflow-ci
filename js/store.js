@@ -160,7 +160,7 @@ export async function majErpOrganisation(erp) {
 // Membres de l'organisation (lecture autorisée à tout membre par la RLS).
 export async function listerUtilisateurs() {
   const { data, error } = await supabase
-    .from("users").select("id, email, role, created_at").order("created_at");
+    .from("users").select("*").order("created_at");
   if (error) throw error;
   return data || [];
 }
@@ -177,6 +177,17 @@ export async function majRoleUtilisateur(id, role) {
   if (!data || !data.length) {
     throw new Error("Modification refusée : rôle administrateur requis. " +
       "Si votre rôle a changé récemment, déconnectez-vous puis reconnectez-vous.");
+  }
+}
+
+// Active / désactive un utilisateur (admin uniquement, via RLS users_admin_write).
+// Un compte désactivé perd tout accès aux données (RLS via current_org_id).
+export async function majActifUtilisateur(id, actif) {
+  const { data, error } = await supabase
+    .from("users").update({ actif }).eq("id", id).select("id");
+  if (error) throw error;
+  if (!data || !data.length) {
+    throw new Error("Modification refusée : rôle administrateur requis.");
   }
 }
 

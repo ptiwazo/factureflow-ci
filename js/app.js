@@ -183,9 +183,23 @@ function afficherAuth() {
   basculer({ auth: true, app: false });
 }
 
+function afficherDesactive() {
+  basculer({ auth: false, app: true });
+  $("#view").innerHTML = `
+    <h1 class="page-title">Compte désactivé</h1>
+    <div class="card">
+      <div class="alert alert-danger">⛔ <div>Votre compte a été <strong>désactivé</strong> par un administrateur.
+        Vous n'avez plus accès aux données de votre entreprise.</div></div>
+      <p class="muted">Contactez l'administrateur de votre organisation pour réactiver votre accès.</p>
+      <button id="dz-logout" class="btn btn-danger">Se déconnecter</button>
+    </div>`;
+  $("#dz-logout").onclick = async () => { await deconnexion(); afficherAuth(); };
+}
+
 async function demarrerSession() {
   const profil = await chargerProfil();
   if (!profil) { afficherAuth(); return; }
+  if (profil.org_id && profil.actif === false) { afficherDesactive(); return; }
   if (!profil.org_id) { afficherOnboarding(); return; }
 
   // Session complète : on affiche l'app.
