@@ -8,7 +8,7 @@
    * Le mapping exact des colonnes Sage dépend du paramétrage comptable :
      format générique fourni, à valider/adapter par l'expert-comptable.
 ===================================================================== */
-import { fcfa, dateFr, esc } from "../ui.js";
+import { fcfa, dateFr, esc, infoPaiement } from "../ui.js";
 import { journaliser, getLignes } from "../store.js";
 import { getProfil } from "../auth.js";
 import { COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
@@ -469,4 +469,37 @@ export async function exporterFacturePDF(f, lignes) {
     </div>`;
   imprimer(`Facture ${f.numero || ""}`, corps);
   await journaliser("export_pdf", `facture:${f.id}`);
+}
+
+// Relevé fournisseur : liste des factures (hors non conformes) avec payé/restant,
+// totaux et SOLDE DÛ, prêt à imprimer / enregistrer en PDF et envoyer au fournisseur.
+export async function exporterReleveFournisseur(fournisseur, factures) {
+  const org = getProfil()?.org_nom || "";
+  const items = (factures || []).filter((f) => f.statut !== "non_conforme")
+    .slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  let totalTtc = 0, totalPaye = 0, solde = 0;
+  const rows = items.map((f) => {
+    const ip = infoPaiement(f);
+    totalTtc += Number(f.total_ttc) || 0; totalPaye += ip.paye; solde += ip.restant;
+    return `<tr>
+      <td>${dateFr(f.date)}</td><td>${esc(f.numero || "—")}</td><td>${dateFr(f.echeance)}</td>
+      <td>${fcfa(f.total_ttc, f.devise)}</td><td>${fcfa(ip.paye, f.devise)}</td>
+      <td>${fcfa(ip.restant, f.devise)}</td></tr>`;
+  }).join("");
+
+  const fourn = fournisseur || {};
+  const corps = `
+    <h1>Relevé fournisseur</h1>
+    <div class="muted">${esc(org)}</div>
+    <div class="muted">${esc(fourn.nom || "Fournisseur")}${fourn.ncc ? " · NCC " + esc(fourn.ncc) : ""}${fourn.rccm ? " · RCCM " + esc(fourn.rccm) : ""}${fourn.telephone ? " · " + esc(fourn.telephone) : ""}</div>
+    <table><thead><tr><th>Date</th><th>N° facture</th><th>Échéance</th><th>Total TTC</th><th>Payé</th><th>Restant dû</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6">Aucune facture</td></tr>`}</tbody></table>
+    <div class="tot">
+      <div><span>Total facturé</span><span>${fcfa(totalTtc)}</span></div>
+      <div><span>Total payé</span><span>${fcfa(totalPaye)}</span></div>
+      <div class="g"><span>Solde dû</span><span>${fcfa(solde)}</span></div>
+    </div>`;
+  imprimer(`Relevé ${fourn.nom || ""}`, corps);
+  await journaliser("releve_fournisseur", `fournisseur:${fourn.id}`);
 }

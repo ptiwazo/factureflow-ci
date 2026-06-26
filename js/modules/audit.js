@@ -25,6 +25,7 @@ export const ACTIONS = {
   changement_erp: "Changement d'ERP",
   maj_fournisseur: "Modification fournisseur",
   import_fournisseurs: "Import de fournisseurs",
+  releve_fournisseur: "Relevé fournisseur (PDF)",
   creation_commande: "Création de commande",
   import_commandes: "Import de commandes",
   suppression_commande: "Suppression de commande",

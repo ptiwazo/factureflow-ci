@@ -2,9 +2,10 @@
    Module 6.3 — Fournisseurs : liste, fiche, historique
    (Déduplication par NCC assurée côté store.trouverOuCreerFournisseur.)
 ===================================================================== */
-import { $, setView, toast, fcfa, dateFr, esc, emptyState, statutBadge, nccValide, busy } from "../ui.js";
+import { $, setView, toast, fcfa, dateFr, esc, emptyState, statutBadge, nccValide, busy, infoPaiement } from "../ui.js";
 import { listerFournisseurs, getFournisseur, listerFactures, majFournisseur, journaliser, upsertFournisseur } from "../store.js";
 import { getProfil } from "../auth.js";
+import { exporterReleveFournisseur } from "./export.js";
 import { navigate } from "../app.js";
 
 export async function renderListe() {
@@ -68,9 +69,12 @@ export async function renderDetail(id) {
     factures = await listerFactures({ fournisseurId: id });
   } catch (e) { setView(emptyState("⚠️", "Erreur", e.message)); return; }
 
-  const totalDepense = factures
-    .filter((x) => x.statut !== "non_conforme")
-    .reduce((s, x) => s + (Number(x.total_ttc) || 0), 0);
+  const exploit = factures.filter((x) => x.statut !== "non_conforme");
+  let totalTtc = 0, totalPaye = 0, solde = 0;
+  for (const x of exploit) {
+    const ip = infoPaiement(x);
+    totalTtc += Number(x.total_ttc) || 0; totalPaye += ip.paye; solde += ip.restant;
+  }
   const peutEcrire = ["admin", "saisie"].includes(getProfil()?.role);
 
   setView(`
@@ -95,8 +99,13 @@ export async function renderDetail(id) {
     </div>
 
     <div class="kpi-grid">
-      <div class="kpi accent-teal"><div class="kpi-label">Total dépensé</div><div class="kpi-value">${fcfa(totalDepense)}</div></div>
-      <div class="kpi"><div class="kpi-label">Factures</div><div class="kpi-value">${factures.length}</div></div>
+      <div class="kpi accent-teal"><div class="kpi-label">Total facturé</div><div class="kpi-value" style="font-size:1.1rem">${fcfa(totalTtc)}</div></div>
+      <div class="kpi"><div class="kpi-label">Payé</div><div class="kpi-value" style="font-size:1.1rem">${fcfa(totalPaye)}</div></div>
+      <div class="kpi accent-danger"><div class="kpi-label">Solde dû</div><div class="kpi-value" style="font-size:1.1rem">${fcfa(solde)}</div></div>
+    </div>
+
+    <div class="row" style="margin-bottom:8px">
+      <button id="btn-releve" class="btn btn-secondary btn-sm">📄 Relevé PDF</button>
     </div>
 
     <h2 class="section-title">Historique des factures</h2>
@@ -109,6 +118,9 @@ export async function renderDetail(id) {
         </a>`).join("") : emptyState("🧾", "Aucune facture")}
     </div>
   `);
+
+  const br = $("#btn-releve");
+  if (br) br.onclick = () => exporterReleveFournisseur(f, factures);
 
   const btn = $("#btn-save");
   if (btn) btn.onclick = async (e) => {
