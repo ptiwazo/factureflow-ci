@@ -209,6 +209,21 @@ export async function getLignes(factureId) {
   return data || [];
 }
 
+// Lignes de toute l'organisation (jointes à leur facture) pour l'analyse par
+// compte de charge. La RLS limite déjà aux lignes de l'org.
+export async function listerLignesPourAnalyse() {
+  const { data, error } = await supabase
+    .from("lignes")
+    .select("montant_ht, categorie, factures!inner(date, statut)");
+  if (error) throw error;
+  return (data || []).map((r) => ({
+    montant_ht: Number(r.montant_ht) || 0,
+    categorie: r.categorie || "",
+    date: r.factures?.date || null,
+    statut: r.factures?.statut || null,
+  }));
+}
+
 // Crée une facture + ses lignes + l'upload de l'original, de façon
 // transactionnelle au mieux : la facture d'abord (pour obtenir l'id qui sert
 // au chemin Storage), puis l'upload, puis les lignes.
