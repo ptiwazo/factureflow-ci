@@ -23,6 +23,8 @@ export const ACTIONS = {
   activation: "Activation d'un compte",
   desactivation: "Désactivation d'un compte",
   changement_erp: "Changement d'ERP",
+  changement_logo: "Logo mis à jour",
+  suppression_logo: "Logo retiré",
   maj_fournisseur: "Modification fournisseur",
   import_fournisseurs: "Import de fournisseurs",
   releve_fournisseur: "Relevé fournisseur (PDF)",

@@ -157,6 +157,15 @@ export async function majErpOrganisation(erp) {
   await journaliser("changement_erp", erp);
 }
 
+// Définit (ou retire si null) le logo de l'organisation (data URL). Admin only.
+export async function majLogoOrganisation(logo) {
+  const { data, error } = await supabase
+    .from("organisations").update({ logo: logo || null }).eq("id", orgId()).select("id");
+  if (error) throw error;
+  if (!data || !data.length) throw new Error("Modification refusée : rôle administrateur requis.");
+  await journaliser(logo ? "changement_logo" : "suppression_logo", "");
+}
+
 /* ----------------------------- Utilisateurs ------------------------ */
 // Membres de l'organisation (lecture autorisée à tout membre par la RLS).
 export async function listerUtilisateurs() {

@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, chargerProfil } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majActifUtilisateur, majErpOrganisation, getOrganisationCourante } from "../store.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majActifUtilisateur, majErpOrganisation, majLogoOrganisation, getOrganisationCourante } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
 // `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
@@ -61,6 +61,22 @@ export async function render() {
         </select>
       </div>
       <button id="erp-save" class="btn btn-primary btn-sm">Enregistrer l'ERP</button>
+    </div>` : ""}
+
+    ${estAdmin ? `<div class="card">
+      <h3>Logo de l'organisation</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Affiché en en-tête des <strong>relevés fournisseurs (PDF)</strong>. L'image est redimensionnée automatiquement.
+      </p>
+      <div class="row" style="gap:12px;align-items:center">
+        <img id="logo-apercu" alt="" style="max-height:60px;max-width:160px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:4px;display:none" />
+        <span id="logo-vide" class="muted">Aucun logo</span>
+      </div>
+      <div class="row" style="gap:8px;margin-top:10px">
+        <button id="logo-choisir" class="btn btn-secondary btn-sm">Choisir une image</button>
+        <button id="logo-retirer" class="btn btn-ghost btn-sm">Retirer</button>
+      </div>
+      <input id="logo-file" type="file" accept="image/*" class="hidden" />
     </div>` : ""}
 
     <div class="card">
@@ -256,6 +272,9 @@ export async function render() {
   // --- Invitation (admin) ---
   if (estAdmin) chargerInvitation();
 
+  // --- Logo (admin) ---
+  if (estAdmin) chargerLogo();
+
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
 
@@ -337,6 +356,54 @@ async function lancerExport(btn, format) {
   } finally {
     busy(btn, false);
   }
+}
+
+// Redimensionne une image (max largeur) et renvoie un data URL PNG.
+function lireImageRedim(file, maxW = 240) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function chargerLogo() {
+  const apercu = $("#logo-apercu"), vide = $("#logo-vide"), input = $("#logo-file");
+  if (!apercu) return;
+  const afficher = (url) => {
+    if (url) { apercu.src = url; apercu.style.display = ""; vide.style.display = "none"; }
+    else { apercu.removeAttribute("src"); apercu.style.display = "none"; vide.style.display = ""; }
+  };
+  try { afficher((await getOrganisationCourante())?.logo || ""); } catch { /* ignore */ }
+
+  $("#logo-choisir").onclick = () => input.click();
+  input.addEventListener("change", async () => {
+    const file = input.files[0]; input.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await lireImageRedim(file);
+      await majLogoOrganisation(dataUrl);
+      afficher(dataUrl);
+      toast("Logo enregistré.", "success");
+    } catch (e) { toast(e.message || "Échec de l'enregistrement du logo.", "error"); }
+  });
+  $("#logo-retirer").onclick = async () => {
+    try { await majLogoOrganisation(null); afficher(""); toast("Logo retiré.", "info"); }
+    catch (e) { toast(e.message || "Échec.", "error"); }
+  };
 }
 
 async function chargerInvitation() {

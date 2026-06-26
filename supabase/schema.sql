@@ -35,6 +35,7 @@ create table if not exists public.organisations (
   plan            text not null default 'free',
   erp             text not null default 'sap' check (erp in ('sap','sage')),  -- ERP comptable (affichage OHADA si 'sage')
   code_invitation text,                 -- code secret de rattachement (rejoindre l'org)
+  logo            text,                 -- logo (data URL) affiché en en-tête des relevés
   created_at      timestamptz not null default now()
 );
 create unique index if not exists uq_org_code_invitation

@@ -475,7 +475,7 @@ export async function exporterFacturePDF(f, lignes) {
 // Lignes en retard surlignées, totaux + SOLDE DÛ + total en retard.
 // options : { type:'toutes'|'nonsoldees', debut, fin, orgNcc }
 export async function exporterReleveFournisseur(fournisseur, factures, options = {}) {
-  const { type = "toutes", debut = "", fin = "", orgNcc = "" } = options;
+  const { type = "toutes", debut = "", fin = "", orgNcc = "", logo = "" } = options;
   const org = getProfil()?.org_nom || "";
   const fourn = fournisseur || {};
 
@@ -499,7 +499,9 @@ export async function exporterReleveFournisseur(fournisseur, factures, options =
   const periode = debut || fin ? `<div class="muted">Période : ${debut ? dateFr(debut) : "…"} → ${fin ? dateFr(fin) : "…"}</div>` : "";
   const titre = type === "nonsoldees" ? "Relevé des échéances (factures non soldées)" : "Relevé fournisseur";
   const corps = `
-    <h1>${titre}</h1>
+    ${logo ? `<img src="${logo}" alt="" style="max-height:64px;max-width:200px;margin-bottom:6px" />` : ""}
+    <h1>${titre}</h1>`;
+  const corpsSuite = `
     <div class="muted">${esc(org)}${orgNcc ? " · NCC " + esc(orgNcc) : ""}</div>
     <div class="muted">${esc(fourn.nom || "Fournisseur")}${fourn.ncc ? " · NCC " + esc(fourn.ncc) : ""}${fourn.rccm ? " · RCCM " + esc(fourn.rccm) : ""}${fourn.telephone ? " · " + esc(fourn.telephone) : ""}</div>
     ${periode}
@@ -512,6 +514,39 @@ export async function exporterReleveFournisseur(fournisseur, factures, options =
       ${retard > 0 ? `<div style="color:#B91C1C"><span>Dont en retard (${nbRetard})</span><span>${fcfa(retard)}</span></div>` : ""}
       <div class="g"><span>Solde dû</span><span>${fcfa(solde)}</span></div>
     </div>`;
-  imprimer(`Relevé ${fourn.nom || ""}`, corps);
+  imprimer(`Relevé ${fourn.nom || ""}`, corps + corpsSuite);
   await journaliser("releve_fournisseur", `fournisseur:${fourn.id} (${type})`);
+}
+
+// Export Excel (.xlsx) du relevé fournisseur (mêmes critères que le PDF).
+export async function exporterReleveFournisseurExcel(fournisseur, factures, options = {}) {
+  const { type = "toutes", debut = "", fin = "" } = options;
+  const fourn = fournisseur || {};
+  let items = (factures || []).filter((f) => f.statut !== "non_conforme");
+  if (debut) items = items.filter((f) => (f.date || "") >= debut);
+  if (fin) items = items.filter((f) => (f.date || "") <= fin);
+  items = items.map((f) => ({ f, ip: infoPaiement(f) }));
+  if (type === "nonsoldees") items = items.filter((x) => x.ip.restant > 0.01);
+  items.sort((a, b) => (a.f.date || "").localeCompare(b.f.date || ""));
+
+  const num2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  let totalTtc = 0, totalPaye = 0, solde = 0;
+  const lignes = items.map(({ f, ip }) => {
+    totalTtc += Number(f.total_ttc) || 0; totalPaye += ip.paye; solde += ip.restant;
+    return [dateFr(f.date), f.numero || "", dateFr(f.echeance), num2(f.total_ttc), num2(ip.paye), num2(ip.restant),
+      ip.enRetard ? "En retard" : (ip.statut === "paye" ? "Payée" : ip.statut === "partiel" ? "Partiel" : "À payer")];
+  });
+
+  const rows = [
+    [type === "nonsoldees" ? "Relevé des échéances" : "Relevé fournisseur"],
+    [getProfil()?.org_nom || ""],
+    [fourn.nom || "Fournisseur", fourn.ncc ? "NCC " + fourn.ncc : ""],
+    [],
+    ["Date", "N° facture", "Échéance", "Total TTC", "Payé", "Restant dû", "Statut"],
+    ...lignes,
+    [],
+    ["", "", "TOTAL", num2(totalTtc), num2(totalPaye), num2(solde)],
+  ];
+  telechargerXlsx(`releve_${(fourn.nom || "fournisseur").replace(/[^\w-]+/g, "_")}_${horodatage()}.xlsx`, "Relevé", rows);
+  await journaliser("releve_fournisseur", `fournisseur:${fourn.id} (${type}, excel)`);
 }

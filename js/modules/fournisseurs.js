@@ -5,7 +5,7 @@
 import { $, setView, toast, fcfa, dateFr, esc, emptyState, statutBadge, nccValide, busy, infoPaiement } from "../ui.js";
 import { listerFournisseurs, getFournisseur, listerFactures, majFournisseur, journaliser, upsertFournisseur, getOrganisationCourante } from "../store.js";
 import { getProfil } from "../auth.js";
-import { exporterReleveFournisseur } from "./export.js";
+import { exporterReleveFournisseur, exporterReleveFournisseurExcel } from "./export.js";
 import { navigate } from "../app.js";
 
 export async function renderListe() {
@@ -76,8 +76,8 @@ export async function renderDetail(id) {
     totalTtc += Number(x.total_ttc) || 0; totalPaye += ip.paye; solde += ip.restant;
   }
   const peutEcrire = ["admin", "saisie"].includes(getProfil()?.role);
-  let orgNcc = "";
-  try { orgNcc = (await getOrganisationCourante())?.ncc || ""; } catch { /* ignore */ }
+  let orgNcc = "", orgLogo = "";
+  try { const o = await getOrganisationCourante(); orgNcc = o?.ncc || ""; orgLogo = o?.logo || ""; } catch { /* ignore */ }
 
   setView(`
     <a href="#/fournisseurs" class="btn btn-ghost btn-sm">← Fournisseurs</a>
@@ -114,7 +114,10 @@ export async function renderDetail(id) {
         <div class="grow field"><label for="rel-debut">Du</label><input id="rel-debut" type="date" /></div>
         <div class="grow field"><label for="rel-fin">Au</label><input id="rel-fin" type="date" /></div>
       </div>
-      <button id="btn-releve" class="btn btn-secondary btn-sm">📄 Générer le relevé PDF</button>
+      <div class="row" style="gap:8px">
+        <button id="btn-releve" class="btn btn-secondary btn-sm">📄 Relevé PDF</button>
+        <button id="btn-releve-xls" class="btn btn-secondary btn-sm">⬇ Relevé Excel</button>
+      </div>
     </div>
 
     <h2 class="section-title">Historique des factures</h2>
@@ -128,10 +131,11 @@ export async function renderDetail(id) {
     </div>
   `);
 
+  const opts = () => ({ type: $("#rel-type").value, debut: $("#rel-debut").value, fin: $("#rel-fin").value, orgNcc, logo: orgLogo });
   const br = $("#btn-releve");
-  if (br) br.onclick = () => exporterReleveFournisseur(f, factures, {
-    type: $("#rel-type").value, debut: $("#rel-debut").value, fin: $("#rel-fin").value, orgNcc,
-  });
+  if (br) br.onclick = () => exporterReleveFournisseur(f, factures, opts());
+  const brx = $("#btn-releve-xls");
+  if (brx) brx.onclick = () => exporterReleveFournisseurExcel(f, factures, opts());
 
   const btn = $("#btn-save");
   if (btn) btn.onclick = async (e) => {
