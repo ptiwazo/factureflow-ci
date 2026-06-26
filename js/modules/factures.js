@@ -1,7 +1,7 @@
 /* =====================================================================
    Module 6.4 — Factures : liste, filtres, détail, original consultable
 ===================================================================== */
-import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, openModal, busy, toNumber, paiementBadge, infoPaiement } from "../ui.js";
+import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, openModal, busy, toNumber, paiementBadge, infoPaiement, debounce } from "../ui.js";
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
   majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
@@ -47,6 +47,9 @@ const FILTRES = [
 ];
 
 let filtreStatut = "";
+let toutesFactures = [];               // cache de la liste (filtrage client)
+// Critères de recherche avancée (persistants tant qu'on reste dans le module).
+const critere = { texte: "", fournisseurId: "", paiement: "", debut: "", fin: "", montantMin: "", montantMax: "" };
 
 export async function renderListe(param) {
   // Filtre passé par l'URL (ex. #/factures/a_controler depuis le tableau de bord).
@@ -57,42 +60,120 @@ export async function renderListe(param) {
       <h1 class="page-title">Factures</h1>
       <a href="#/capture" class="btn btn-primary btn-sm">+ Nouvelle</a>
     </div>
+    <input id="recherche" type="search" placeholder="Rechercher (n°, fournisseur, NCC)…" class="mb" value="${esc(critere.texte)}" />
     <div class="filters" id="filters">
       ${FILTRES.map((f) => `<button class="chip ${f.key === filtreStatut ? "active" : ""}" data-statut="${f.key}">${f.label}</button>`).join("")}
     </div>
+    <details id="filtres-av" style="margin-bottom:10px">
+      <summary style="cursor:pointer;font-size:.9rem;font-weight:600">Filtres avancés</summary>
+      <div class="card" style="margin-top:8px">
+        <div class="row" style="gap:12px">
+          <div class="grow field"><label for="f-fourn">Fournisseur</label>
+            <select id="f-fourn"><option value="">Tous</option></select></div>
+          <div class="grow field"><label for="f-paie">Paiement</label>
+            <select id="f-paie">
+              <option value="">Tous</option>
+              <option value="a_payer">À payer</option>
+              <option value="partiel">Partiel</option>
+              <option value="paye">Payée</option>
+            </select></div>
+        </div>
+        <div class="row" style="gap:12px">
+          <div class="grow field"><label for="f-debut">Du</label><input id="f-debut" type="date" value="${critere.debut}" /></div>
+          <div class="grow field"><label for="f-fin">Au</label><input id="f-fin" type="date" value="${critere.fin}" /></div>
+        </div>
+        <div class="row" style="gap:12px">
+          <div class="grow field"><label for="f-min">Montant min</label><input id="f-min" type="number" step="0.01" value="${critere.montantMin}" /></div>
+          <div class="grow field"><label for="f-max">Montant max</label><input id="f-max" type="number" step="0.01" value="${critere.montantMax}" /></div>
+        </div>
+        <button id="f-reset" class="btn btn-ghost btn-sm">Réinitialiser les filtres</button>
+      </div>
+    </details>
+    <p id="liste-compte" class="muted" style="font-size:.82rem;margin:0 0 6px"></p>
     <div id="liste"><div class="loading-block"><span class="spinner dark"></span></div></div>
   `);
 
   $$("#filters .chip").forEach((c) => c.addEventListener("click", () => {
     filtreStatut = c.dataset.statut;
     $$("#filters .chip").forEach((x) => x.classList.toggle("active", x === c));
-    chargerListe();
+    appliquer();
   }));
 
-  chargerListe();
+  $("#recherche").addEventListener("input", debounce((e) => { critere.texte = e.target.value.trim(); appliquer(); }, 200));
+  $("#f-fourn").addEventListener("change", (e) => { critere.fournisseurId = e.target.value; appliquer(); });
+  $("#f-paie").addEventListener("change", (e) => { critere.paiement = e.target.value; appliquer(); });
+  $("#f-debut").addEventListener("change", (e) => { critere.debut = e.target.value; appliquer(); });
+  $("#f-fin").addEventListener("change", (e) => { critere.fin = e.target.value; appliquer(); });
+  $("#f-min").addEventListener("input", debounce((e) => { critere.montantMin = e.target.value; appliquer(); }, 200));
+  $("#f-max").addEventListener("input", debounce((e) => { critere.montantMax = e.target.value; appliquer(); }, 200));
+  $("#f-reset").addEventListener("click", () => {
+    Object.assign(critere, { texte: "", fournisseurId: "", paiement: "", debut: "", fin: "", montantMin: "", montantMax: "" });
+    renderListe(); // recharge l'écran avec critères vierges
+  });
+
+  try {
+    toutesFactures = await listerFactures();
+  } catch (e) {
+    $("#liste").innerHTML = emptyState("⚠️", "Erreur de chargement", e.message);
+    return;
+  }
+
+  // Options « Fournisseur » à partir des factures chargées.
+  const fournMap = new Map();
+  for (const f of toutesFactures) {
+    if (f.fournisseur_id && f.fournisseurs?.nom && !fournMap.has(f.fournisseur_id)) {
+      fournMap.set(f.fournisseur_id, f.fournisseurs.nom);
+    }
+  }
+  const sel = $("#f-fourn");
+  [...fournMap.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, nom]) => {
+    const o = document.createElement("option");
+    o.value = id; o.textContent = nom;
+    if (id === critere.fournisseurId) o.selected = true;
+    sel.appendChild(o);
+  });
+  $("#f-paie").value = critere.paiement;
+
+  appliquer();
 }
 
-async function chargerListe() {
+// Applique tous les critères (client-side) sur la liste chargée.
+function appliquer() {
   const cible = $("#liste");
-  try {
-    const factures = await listerFactures(filtreStatut ? { statut: filtreStatut } : {});
-    if (!factures.length) {
-      cible.innerHTML = emptyState("🗂️", "Aucune facture", "Touchez « + Nouvelle » pour en enregistrer une.");
-      return;
+  if (!cible) return;
+  const q = critere.texte.toLowerCase();
+  const min = toNumber(critere.montantMin), max = toNumber(critere.montantMax);
+
+  const res = toutesFactures.filter((f) => {
+    if (filtreStatut && f.statut !== filtreStatut) return false;
+    if (critere.fournisseurId && f.fournisseur_id !== critere.fournisseurId) return false;
+    if (critere.paiement && infoPaiement(f).statut !== critere.paiement) return false;
+    if (critere.debut && (!f.date || f.date < critere.debut)) return false;
+    if (critere.fin && (!f.date || f.date > critere.fin)) return false;
+    const ttc = Number(f.total_ttc) || 0;
+    if (critere.montantMin && ttc < min) return false;
+    if (critere.montantMax && ttc > max) return false;
+    if (q) {
+      const hay = `${f.numero || ""} ${f.fournisseurs?.nom || ""} ${f.fournisseurs?.ncc || ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
     }
-    cible.innerHTML = `<div class="list">${factures.map(ligneFacture).join("")}</div>`;
-  } catch (e) {
-    cible.innerHTML = emptyState("⚠️", "Erreur de chargement", e.message);
-  }
+    return true;
+  });
+
+  $("#liste-compte").textContent = `${res.length} facture(s)`;
+  cible.innerHTML = res.length
+    ? `<div class="list">${res.map(ligneFacture).join("")}</div>`
+    : emptyState("🗂️", "Aucune facture", toutesFactures.length ? "Aucun résultat pour ces critères." : "Touchez « + Nouvelle » pour en enregistrer une.");
 }
 
 function ligneFacture(f) {
   const fournisseur = f.fournisseurs?.nom || "Fournisseur inconnu";
+  const ip = infoPaiement(f);
   return `
     <a class="list-item" href="#/facture/${f.id}">
       <div class="li-main">
         <div class="li-title">${esc(fournisseur)}</div>
-        <div class="li-sub">${esc(f.numero || "sans n°")} · ${dateFr(f.date)} · ${statutBadge(f.statut)}</div>
+        <div class="li-sub">${esc(f.numero || "sans n°")} · ${dateFr(f.date)} · ${statutBadge(f.statut)} · ${paiementBadge(ip.statut)}${ip.enRetard ? ` <span style="color:var(--danger)">retard</span>` : ""}</div>
       </div>
       <div class="li-amount">${fcfa(f.total_ttc, f.devise)}</div>
     </a>`;
