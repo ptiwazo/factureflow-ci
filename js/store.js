@@ -486,6 +486,73 @@ export async function facturesParCommande(commandeId) {
   return data || [];
 }
 
+/* --------------------------- Récurrences --------------------------- */
+export async function listerRecurrences({ actif } = {}) {
+  let q = supabase.from("recurrences").select("*, fournisseurs(nom)").order("designation");
+  if (actif != null) q = q.eq("actif", actif);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+export async function getRecurrence(id) {
+  const { data, error } = await supabase.from("recurrences").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+export async function creerRecurrence(d) {
+  const { data, error } = await supabase.from("recurrences").insert({
+    org_id: orgId(), fournisseur_id: d.fournisseur_id || null, designation: d.designation,
+    montant_ht: d.montant_ht || 0, taux_tva: d.taux_tva ?? CONFIG.TVA_DEFAUT, categorie: d.categorie || null,
+    devise: d.devise || CONFIG.DEVISE_DEFAUT, jour: d.jour || 1, actif: d.actif !== false,
+    date_debut: d.date_debut || null, date_fin: d.date_fin || null, created_by: getProfil()?.user?.id,
+  }).select().single();
+  if (error) throw error;
+  await journaliser("creation_recurrence", `recurrence:${data.id}`);
+  return data;
+}
+export async function majRecurrence(id, patch) {
+  const { error } = await supabase.from("recurrences").update(patch).eq("id", id);
+  if (error) throw error;
+}
+export async function supprimerRecurrence(id) {
+  const { error } = await supabase.from("recurrences").delete().eq("id", id);
+  if (error) throw error;
+  await journaliser("suppression_recurrence", `recurrence:${id}`);
+}
+
+// Génère les factures dues (mois courant) pour les abonnements actifs de l'org.
+// Évite les doublons via `derniere_periode`. Retourne le nombre créé.
+export async function genererRecurrencesDues() {
+  const recs = await listerRecurrences({ actif: true });
+  const auj = new Date();
+  const periode = auj.toISOString().slice(0, 7);
+  const jourAuj = auj.getDate();
+  let cree = 0;
+  for (const r of recs) {
+    if (r.derniere_periode === periode) continue;
+    if (r.date_debut && r.date_debut.slice(0, 7) > periode) continue;
+    if (r.date_fin && r.date_fin.slice(0, 7) < periode) continue;
+    if (jourAuj < (r.jour || 1)) continue;
+
+    const ht = Number(r.montant_ht) || 0;
+    const taux = Number(r.taux_tva) || 0;
+    const tva = Math.round(ht * taux) / 100;
+    const dateFact = `${periode}-${String(Math.min(r.jour || 1, 28)).padStart(2, "0")}`;
+    await creerFactureComplete({
+      entete: {
+        fournisseur_id: r.fournisseur_id, numero: `ABO ${periode}`, date: dateFact, echeance: dateFact,
+        total_ht: ht, taux_tva: taux, montant_tva: tva, total_ttc: Math.round((ht + tva) * 100) / 100,
+        devise: r.devise || CONFIG.DEVISE_DEFAUT, statut: "a_controler",
+      },
+      lignes: [{ designation: r.designation, quantite: 1, prix_unitaire: ht, montant_ht: ht, taux_tva: taux, categorie: r.categorie || null }],
+    });
+    await majRecurrence(r.id, { derniere_periode: periode });
+    cree++;
+  }
+  if (cree) await journaliser("generation_recurrences", `${cree} facture(s) · ${periode}`);
+  return cree;
+}
+
 /* ------------------------------ Storage ---------------------------- */
 function extensionDe(fichier) {
   const t = fichier.type || "";

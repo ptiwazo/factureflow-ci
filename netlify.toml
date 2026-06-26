@@ -12,6 +12,10 @@
 [functions."notify-overdue"]
   schedule = "0 7 * * *"
 
+# Génération quotidienne des factures d'abonnement (06:00 UTC).
+[functions."generate-recurrences"]
+  schedule = "0 6 * * *"
+
 # SPA : toutes les routes applicatives servent index.html (routing côté client).
 # La fonction et les assets statiques sont servis avant ce repli.
 [[redirects]]

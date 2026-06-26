@@ -19,6 +19,7 @@ import * as verification from "./modules/verification.js";
 import * as factures     from "./modules/factures.js";
 import * as fournisseurs from "./modules/fournisseurs.js";
 import * as commandes    from "./modules/commandes.js";
+import * as recurrences  from "./modules/recurrences.js";
 import * as echeancier   from "./modules/echeancier.js";
 import * as tva          from "./modules/tva.js";
 import * as analytics    from "./modules/analytics.js";
@@ -50,6 +51,9 @@ const routes = {
   commandes:       (p) => commandes.renderListe(p),
   commande:        (p) => commandes.renderDetail(p),
   "nouvelle-commande": () => commandes.renderNouvelle(),
+  recurrences:     (p) => recurrences.renderListe(p),
+  recurrence:      (p) => recurrences.renderForm(p),
+  "nouvelle-recurrence": () => recurrences.renderNouvelle(),
   echeancier:      (p) => echeancier.render(p),
   tva:             (p) => tva.render(p),
   analytics:       (p) => analytics.render(p),
