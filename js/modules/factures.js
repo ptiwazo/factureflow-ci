@@ -5,7 +5,7 @@ import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, open
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
   majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
-  lierFactureCommande, listerCommandes, getCommande, facturesParCommande,
+  lierFactureCommande, listerCommandes, getCommande, getCommandeLignes, facturesParCommande,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
@@ -208,9 +208,11 @@ export async function renderDetail(id) {
 
   // Rapprochement bon de commande (best-effort).
   const peutLier = peutEcrire || peutControler;
-  let cmd = null, facturesCmd = [], commandesDispo = [];
+  let cmd = null, facturesCmd = [], commandesDispo = [], cmdLignes = [];
   if (f.commande_id) {
-    try { [cmd, facturesCmd] = await Promise.all([getCommande(f.commande_id), facturesParCommande(f.commande_id)]); } catch { /* ignore */ }
+    try { [cmd, facturesCmd, cmdLignes] = await Promise.all([
+      getCommande(f.commande_id), facturesParCommande(f.commande_id), getCommandeLignes(f.commande_id),
+    ]); } catch { /* ignore */ }
   } else if (peutLier && f.fournisseur_id) {
     try { commandesDispo = (await listerCommandes({ fournisseurId: f.fournisseur_id })).filter((c) => c.statut !== "annulee"); } catch { /* ignore */ }
   }
@@ -218,6 +220,20 @@ export async function renderDetail(id) {
   const factureTotal = facturesCmd.filter((x) => x.statut !== "non_conforme").reduce((s, x) => s + (Number(x.total_ht) || 0), 0);
   const ecartCmd = Math.round((factureTotal - cmdTotal) * 100) / 100;
   const surCmd = ecartCmd > 0.01;
+
+  // Comparaison ligne-à-ligne (matching par désignation normalisée).
+  const normDes = (s) => (s || "").toString().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+  const cmdMap = new Map(cmdLignes.map((cl) => [normDes(cl.designation), cl]));
+  const comparaison = (cmd ? lignes : []).map((l) => {
+    const c = cmdMap.get(normDes(l.designation));
+    const qF = Number(l.quantite) || 0, puF = Number(l.prix_unitaire) || 0;
+    const qC = c ? Number(c.quantite) || 0 : null, puC = c ? Number(c.prix_unitaire) || 0 : null;
+    const eQ = c ? Math.round((qF - qC) * 1000) / 1000 : null;
+    const eP = c ? Math.round((puF - puC) * 100) / 100 : null;
+    const ok = c && Math.abs(eQ) < 0.001 && Math.abs(eP) < 0.01;
+    return { l, c, qF, qC, puF, puC, eQ, eP, ok };
+  });
+  const ecartsLigne = comparaison.filter((x) => !x.ok).length;
 
   setView(`
     <div class="row between">
@@ -296,7 +312,19 @@ export async function renderDetail(id) {
             <div class="kpi-value" style="font-size:1.05rem">${fcfa(surCmd ? ecartCmd : Math.max(0, -ecartCmd), f.devise)}</div></div>
         </div>
         ${surCmd ? `<div class="alert alert-danger">⚠️ <div>Le montant facturé dépasse la commande de <strong>${fcfa(ecartCmd, f.devise)}</strong>.</div></div>` : ""}
-        ${peutLier ? `<button id="btn-delier" class="btn btn-ghost btn-sm">Délier la commande</button>` : ""}`
+        <h4 style="margin:12px 0 4px">Comparaison ligne à ligne ${ecartsLigne ? `<span style="color:var(--danger)">(${ecartsLigne} écart${ecartsLigne > 1 ? "s" : ""})</span>` : `<span style="color:var(--success)">✓</span>`}</h4>
+        <p class="muted" style="font-size:.76rem;margin:0 0 6px">Rapprochement par désignation (qté & prix unitaire). « Hors commande » = ligne absente du bon de commande.</p>
+        <div style="overflow-x:auto"><table class="lignes-table">
+          <thead><tr><th class="col-des">Désignation</th><th>Qté cmd</th><th>Qté fact</th><th>PU cmd</th><th>PU fact</th></tr></thead>
+          <tbody>${comparaison.map((x) => `<tr style="${x.c ? (x.ok ? "" : "background:var(--danger-50)") : "background:#FEF3C7"}">
+            <td class="col-des">${esc(x.l.designation)}${x.c ? "" : ` <span class="muted">(hors commande)</span>`}</td>
+            <td>${x.c ? x.qC : "—"}</td>
+            <td>${x.qF}${x.c && Math.abs(x.eQ) >= 0.001 ? ` <span style="color:var(--danger)">(${x.eQ > 0 ? "+" : ""}${x.eQ})</span>` : ""}</td>
+            <td>${x.c ? fcfa(x.puC, f.devise) : "—"}</td>
+            <td>${fcfa(x.puF, f.devise)}${x.c && Math.abs(x.eP) >= 0.01 ? ` <span style="color:var(--danger)">(${x.eP > 0 ? "+" : ""}${fcfa(x.eP, f.devise)})</span>` : ""}</td>
+          </tr>`).join("") || `<tr><td colspan="5" class="muted">Aucune ligne sur la facture.</td></tr>`}</tbody>
+        </table></div>
+        ${peutLier ? `<button id="btn-delier" class="btn btn-ghost btn-sm" style="margin-top:8px">Délier la commande</button>` : ""}`
       : (peutLier ? (commandesDispo.length ? `
         <div class="row" style="gap:8px;align-items:flex-end">
           <div class="grow field"><label for="sel-cmd">Rapprocher à une commande</label>

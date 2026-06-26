@@ -26,6 +26,7 @@ export const ACTIONS = {
   maj_fournisseur: "Modification fournisseur",
   import_fournisseurs: "Import de fournisseurs",
   creation_commande: "Création de commande",
+  import_commandes: "Import de commandes",
   suppression_commande: "Suppression de commande",
   rapprochement_commande: "Rapprochement commande",
   delier_commande: "Commande déliée",

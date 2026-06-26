@@ -9,7 +9,8 @@
 import { $, $$, setView, toast, fcfa, dateFr, esc, emptyState, busy, toNumber } from "../ui.js";
 import {
   listerCommandes, getCommande, getCommandeLignes, creerCommandeComplete,
-  majStatutCommande, supprimerCommande, facturesParCommande, listerFournisseurs, journaliser,
+  majStatutCommande, supprimerCommande, facturesParCommande, listerFournisseurs,
+  upsertFournisseur, journaliser,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { CONFIG } from "../config.js";
@@ -32,11 +33,24 @@ export async function renderListe() {
   setView(`
     <div class="row between">
       <h1 class="page-title">Bons de commande</h1>
-      ${peutEcrire() ? `<a href="#/nouvelle-commande" class="btn btn-primary btn-sm">+ Nouvelle</a>` : ""}
+      ${peutEcrire() ? `<div class="row" style="gap:8px">
+        <button id="cmd-modele" class="btn btn-ghost btn-sm">⬇ Modèle</button>
+        <button id="cmd-import" class="btn btn-secondary btn-sm">⬆ Importer</button>
+        <a href="#/nouvelle-commande" class="btn btn-primary btn-sm">+ Nouvelle</a>
+      </div>` : ""}
     </div>
     <input id="cmd-rech" type="search" placeholder="Rechercher (n°, fournisseur)…" class="mb" />
+    <div id="cmd-import-info"></div>
     <div id="cmd-liste"><div class="loading-block"><span class="spinner dark"></span></div></div>
+    <input id="cmd-file" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
   `);
+
+  if (peutEcrire()) {
+    const input = $("#cmd-file");
+    $("#cmd-import").onclick = () => input.click();
+    input.addEventListener("change", () => { if (input.files[0]) importerExcel(input.files[0]); input.value = ""; });
+    $("#cmd-modele").onclick = (e) => telechargerModele(e.currentTarget);
+  }
 
   let toutes = [];
   try { toutes = await listerCommandes(); }
@@ -234,4 +248,139 @@ export async function renderDetail(id) {
     try { await supprimerCommande(id); toast("Commande supprimée.", "info"); navigate("#/commandes"); }
     catch (e) { toast(e.message, "error"); }
   };
+}
+
+/* ------------------- Import Excel (xlsx/xls/csv) ------------------- */
+// Format attendu : UNE LIGNE PAR ARTICLE, l'en-tête (fournisseur/NCC/n°/date)
+// répété sur chaque ligne d'une même commande. Les lignes sont regroupées par
+// n° de commande (à défaut : fournisseur + date).
+function normCle(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[._-]/g, " ").replace(/\s+/g, " ").trim();
+}
+const COLONNES = {
+  fournisseur: ["fournisseur", "nom", "raison sociale", "supplier", "cardname"],
+  ncc: ["ncc", "numero compte contribuable", "compte contribuable", "tax id"],
+  numero: ["n commande", "numero commande", "numero", "commande", "bon de commande", "po", "reference", "ref"],
+  date: ["date", "date commande"],
+  designation: ["designation", "libelle", "article", "description", "produit"],
+  quantite: ["quantite", "qte", "quantity", "qty"],
+  prix_unitaire: ["prix unitaire", "pu", "prix", "unit price", "prixunitaire"],
+  montant: ["montant", "montant ht", "total", "amount"],
+};
+function mapLigne(row) {
+  const index = {};
+  for (const k of Object.keys(row)) index[normCle(k)] = row[k];
+  const lire = (champ) => {
+    for (const alias of COLONNES[champ]) if (index[alias] != null && String(index[alias]).trim() !== "") return index[alias];
+    return "";
+  };
+  return {
+    fournisseur: String(lire("fournisseur")).trim(),
+    ncc: String(lire("ncc")).trim(),
+    numero: String(lire("numero")).trim(),
+    date: parseDate(lire("date")),
+    designation: String(lire("designation")).trim(),
+    quantite: toNumber(lire("quantite")),
+    prix_unitaire: toNumber(lire("prix_unitaire")),
+    montant: toNumber(lire("montant")),
+  };
+}
+function parseDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (m) { let [, d, mo, y] = m; if (y.length === 2) y = "20" + y; return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`; }
+  return null;
+}
+
+async function telechargerModele(btn) {
+  busy(btn, true, "Génération…");
+  try {
+    const mod = await import("https://esm.sh/xlsx@0.18.5");
+    const XLSX = mod.read ? mod : (mod.default || mod);
+    const donnees = [
+      ["Fournisseur", "NCC", "N° commande", "Date", "Désignation", "Quantité", "Prix unitaire", "Montant HT"],
+      ["Établissements Kouassi", "CC1234567A", "BC-2026-001", "2026-06-01", "Papier A4 (rame)", "10", "2500", "25000"],
+      ["Établissements Kouassi", "CC1234567A", "BC-2026-001", "2026-06-01", "Toner imprimante", "2", "45000", "90000"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(donnees);
+    ws["!cols"] = [{ wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 26 }, { wch: 10 }, { wch: 14 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Commandes");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "modele_commandes.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Modèle téléchargé.", "success");
+  } catch (e) { toast("Génération impossible : " + (e.message || ""), "error"); }
+  finally { busy(btn, false); }
+}
+
+async function importerExcel(file) {
+  const info = $("#cmd-import-info");
+  info.innerHTML = `<div class="alert alert-info"><span class="spinner dark"></span> Lecture du fichier…</div>`;
+  try {
+    const mod = await import("https://esm.sh/xlsx@0.18.5");
+    const XLSX = mod.read ? mod : (mod.default || mod);
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+    const lignes = rows.map(mapLigne).filter((l) => l.designation || l.montant || l.numero);
+    if (!lignes.length) {
+      info.innerHTML = `<div class="alert alert-danger">Aucune donnée reconnue. Colonnes attendues : Fournisseur, NCC, N° commande, Date, Désignation, Quantité, Prix unitaire, Montant HT.</div>`;
+      return;
+    }
+
+    // Regroupe par commande (n° ; à défaut fournisseur+date).
+    const groupes = new Map();
+    for (const l of lignes) {
+      const cle = l.numero || `${l.fournisseur}|${l.date || ""}`;
+      if (!groupes.has(cle)) groupes.set(cle, []);
+      groupes.get(cle).push(l);
+    }
+
+    let cree = 0, erreurs = 0;
+    for (const [, items] of groupes) {
+      try {
+        const ref = items[0];
+        if (!ref.fournisseur && !ref.ncc) { erreurs++; continue; }
+        const fr = await upsertFournisseur({ nom: ref.fournisseur, ncc: ref.ncc });
+        const fournisseur_id = fr.fournisseur?.id;
+        if (!fournisseur_id) { erreurs++; continue; }
+        const lignesCmd = items.map((i) => ({
+          designation: i.designation,
+          quantite: i.quantite,
+          prix_unitaire: i.prix_unitaire,
+          montant_ht: i.montant || Math.round(i.quantite * i.prix_unitaire * 100) / 100,
+        }));
+        const total_ht = Math.round(lignesCmd.reduce((s, x) => s + x.montant_ht, 0) * 100) / 100;
+        await creerCommandeComplete({
+          entete: { fournisseur_id, numero: ref.numero, date: ref.date, devise: CONFIG.DEVISE_DEFAUT, total_ht },
+          lignes: lignesCmd,
+        });
+        cree++;
+      } catch { erreurs++; }
+    }
+
+    await journaliser("import_commandes", `${cree} commande(s)`);
+    info.innerHTML = `<div class="alert alert-info">✅ Import terminé : <strong>${cree}</strong> commande(s) créée(s)${erreurs ? `, <strong style="color:var(--danger)">${erreurs} en erreur</strong>` : ""}.</div>`;
+    toast("Import des commandes terminé.", "success");
+
+    // Rafraîchit la liste.
+    try {
+      const toutes = await listerCommandes();
+      $("#cmd-liste").innerHTML = `<div class="list">${toutes.map((c) => `
+        <a class="list-item" href="#/commande/${c.id}">
+          <div class="li-main"><div class="li-title">${esc(c.fournisseurs?.nom || "Fournisseur inconnu")}</div>
+            <div class="li-sub">${esc(c.numero || "sans n°")} · ${dateFr(c.date)} · ${badgeCmd(c.statut)}</div></div>
+          <div class="li-amount">${fcfa(c.total_ht, c.devise)}</div></a>`).join("")}</div>`;
+    } catch { /* la liste sera à jour au prochain affichage */ }
+  } catch (e) {
+    info.innerHTML = `<div class="alert alert-danger">⚠️ Import impossible : ${esc(e.message || "fichier illisible")}.</div>`;
+  }
 }
