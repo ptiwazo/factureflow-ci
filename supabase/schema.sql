@@ -302,10 +302,26 @@ begin
   return v_org;
 end $$;
 
--- Rattachement à une organisation existante via son CODE D'INVITATION (rôle 'saisie').
+-- Création d'une organisation par le SUPER ADMIN (sans l'attacher). Renvoie
+-- l'id et le code d'invitation à transmettre à l'entreprise.
+create or replace function public.superadmin_creer_organisation(p_nom text, p_ncc text default null)
+returns table(id uuid, code_invitation text)
+language plpgsql security definer set search_path = public as $$
+declare v_org uuid; v_code text;
+begin
+  if not public.is_super_admin() then raise exception 'Réservé au super administrateur'; end if;
+  if btrim(coalesce(p_nom, '')) = '' then raise exception 'Nom d''entreprise requis'; end if;
+  v_code := public.gen_code_invitation();
+  insert into public.organisations(nom, ncc, code_invitation)
+    values (p_nom, p_ncc, v_code) returning organisations.id into v_org;
+  return query select v_org, v_code;
+end $$;
+
+-- Rattachement via CODE D'INVITATION. La 1ʳᵉ personne à rejoindre une
+-- organisation en devient l'ADMIN ; les suivantes sont en rôle 'saisie'.
 create or replace function public.rejoindre_organisation(p_code text)
 returns uuid language plpgsql security definer set search_path = public as $$
-declare v_org uuid;
+declare v_org uuid; v_role user_role;
 begin
   if auth.uid() is null then raise exception 'Non authentifié'; end if;
   if exists (select 1 from public.users where id = auth.uid()) then
@@ -315,8 +331,14 @@ begin
    where code_invitation = upper(btrim(coalesce(p_code, '')));
   if v_org is null then raise exception 'Code d''invitation invalide'; end if;
 
+  if exists (select 1 from public.users where org_id = v_org) then
+    v_role := 'saisie';
+  else
+    v_role := 'admin';
+  end if;
+
   insert into public.users(id, org_id, role, email)
-    values (auth.uid(), v_org, 'saisie', (select email from auth.users where id = auth.uid()));
+    values (auth.uid(), v_org, v_role, (select email from auth.users where id = auth.uid()));
   return v_org;
 end $$;
 

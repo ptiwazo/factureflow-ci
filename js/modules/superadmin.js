@@ -7,9 +7,8 @@
    la RLS (org_superadmin_all + is_super_admin).
 ===================================================================== */
 import { $, $$, setView, toast, esc, dateFr, emptyState, busy } from "../ui.js";
-import { listerOrganisations, superadminGenererCode } from "../store.js";
+import { listerOrganisations, superadminGenererCode, superadminCreerOrganisation } from "../store.js";
 import { getProfil } from "../auth.js";
-import { navigate } from "../app.js";
 
 export async function render() {
   if (!getProfil()?.superAdmin) {
@@ -28,14 +27,29 @@ export async function render() {
     </div>
     <h1 class="page-title">Console super admin</h1>
     <p class="muted" style="margin-top:-10px;font-size:.85rem">
-      Générez le <strong>code d'invitation</strong> de chaque entreprise et transmettez-le à son
-      administrateur. Régénérer un code invalide l'ancien.
+      Créez les entreprises et transmettez leur <strong>code d'invitation</strong>. La 1ʳᵉ personne
+      qui rejoint avec le code en devient l'<strong>administrateur</strong> ; les suivantes sont en « saisie ».
+      Régénérer un code invalide l'ancien.
     </p>
 
+    <div class="card">
+      <h3>Créer une entreprise</h3>
+      <div class="row" style="gap:12px">
+        <div class="grow field"><label for="sa-nom">Nom de l'entreprise</label>
+          <input id="sa-nom" type="text" placeholder="Ex. Établissements Kouassi" /></div>
+        <div class="grow field"><label for="sa-ncc">NCC <small>(facultatif)</small></label>
+          <input id="sa-ncc" type="text" placeholder="Numéro de Compte Contribuable" /></div>
+      </div>
+      <button id="sa-creer" class="btn btn-primary btn-sm">Créer l'entreprise</button>
+    </div>
+
+    <h2 class="section-title">Entreprises (${orgs.length})</h2>
     ${orgs.length ? `<div class="list">${orgs.map(carte).join("")}</div>`
-      : emptyState("🏢", "Aucune entreprise", "Aucune organisation enregistrée.")}
+      : emptyState("🏢", "Aucune entreprise", "Créez-en une ci-dessus.")}
     <div style="height:24px"></div>
   `);
+
+  $("#sa-creer").onclick = (e) => creerEntreprise(e.currentTarget);
 
   $$("[data-gen]").forEach((btn) => {
     btn.onclick = (e) => genererCode(e.currentTarget.dataset.gen, e.currentTarget);
@@ -65,6 +79,20 @@ function carte(o) {
         <button class="btn btn-primary btn-sm" data-gen="${o.id}">${code ? "Régénérer" : "Générer"}</button>
       </div>
     </div>`;
+}
+
+async function creerEntreprise(btn) {
+  const nom = $("#sa-nom").value.trim();
+  if (!nom) return toast("Indiquez le nom de l'entreprise.", "warn");
+  busy(btn, true, "Création…");
+  try {
+    const res = await superadminCreerOrganisation(nom, $("#sa-ncc").value.trim());
+    toast(`Entreprise créée. Code : ${res?.code_invitation || "—"}`, "success", 6000);
+    render();
+  } catch (e) {
+    busy(btn, false);
+    toast(e.message || "Échec de la création.", "error");
+  }
 }
 
 async function genererCode(orgId, btn) {

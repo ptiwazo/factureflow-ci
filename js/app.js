@@ -10,7 +10,7 @@
 import { $, $$, toast } from "./ui.js";
 import {
   chargerProfil, getProfil, connexion, inscription,
-  deconnexion, onAuthChange, creerOrganisation, rejoindreOrganisation,
+  deconnexion, onAuthChange, rejoindreOrganisation,
 } from "./auth.js";
 
 import * as dashboard    from "./modules/dashboard.js";
@@ -91,27 +91,16 @@ export function navigate(hash) {
 /* --------------------------- Écran Auth ---------------------------- */
 let modeAuth = "login";
 
-// Affiche les champs « Créer » ou « Rejoindre » selon le mode choisi.
-function appliquerOrgMode() {
-  const join = document.querySelector('input[name="org-mode"]:checked')?.value === "join";
-  $$(".org-create").forEach((el) => el.classList.toggle("hidden", join));
-  $$(".org-join").forEach((el) => el.classList.toggle("hidden", !join));
-}
-
 function initAuthUI() {
   $$("[data-auth-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       modeAuth = btn.dataset.authTab;
       $$("[data-auth-tab]").forEach((b) => b.classList.toggle("active", b === btn));
       $$(".signup-only").forEach((el) => el.classList.toggle("hidden", modeAuth !== "signup"));
-      if (modeAuth === "signup") appliquerOrgMode();
       $("#auth-submit").textContent = modeAuth === "signup" ? "Créer mon compte" : "Se connecter";
       $("#auth-error").textContent = "";
     });
   });
-
-  // Bascule Créer / Rejoindre.
-  $$('input[name="org-mode"]').forEach((r) => r.addEventListener("change", appliquerOrgMode));
 
   $("#auth-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -124,18 +113,9 @@ function initAuthUI() {
 
     try {
       if (modeAuth === "signup") {
-        const orgMode = document.querySelector('input[name="org-mode"]:checked')?.value || "create";
-        let opts;
-        if (orgMode === "join") {
-          const code = $("#org-code").value.trim();
-          if (!code) throw new Error("Saisissez le code d'invitation.");
-          opts = { mode: "join", code };
-        } else {
-          const orgNom = $("#org-nom").value.trim();
-          if (!orgNom) throw new Error("Indiquez le nom de votre entreprise.");
-          opts = { mode: "create", orgNom, orgNcc: $("#org-ncc").value.trim() };
-        }
-        const res = await inscription(email, password, opts);
+        const code = $("#org-code").value.trim();
+        if (!code) throw new Error("Saisissez le code d'invitation de votre entreprise.");
+        const res = await inscription(email, password, { mode: "join", code });
         if (res.needConfirmation) {
           // Pas de session : Supabase exige la confirmation par e-mail.
           modeAuth = "login";
@@ -173,44 +153,18 @@ function afficherOnboarding() {
   $("#view").innerHTML = `
     <h1 class="page-title">Dernière étape</h1>
     <div class="card">
-      <div class="row" style="gap:16px;margin-bottom:10px">
-        <label class="row" style="gap:6px"><input type="radio" name="ob-mode" value="create" checked style="width:auto" /> Créer une entreprise</label>
-        <label class="row" style="gap:6px"><input type="radio" name="ob-mode" value="join" style="width:auto" /> Rejoindre</label>
-      </div>
-      <div class="ob-create">
-        <p class="muted mb">Créez votre entreprise (vous en serez l'administrateur). Un code d'invitation sera généré pour rattacher vos collègues.</p>
-        <div class="field"><label for="ob-nom">Nom de l'entreprise</label>
-          <input id="ob-nom" type="text" placeholder="Ex. Établissements Kouassi" /></div>
-        <div class="field"><label for="ob-ncc">NCC <small>(facultatif)</small></label>
-          <input id="ob-ncc" type="text" placeholder="Numéro de Compte Contribuable" /></div>
-      </div>
-      <div class="ob-join hidden">
-        <p class="muted mb">Rejoignez une entreprise existante avec le <strong>code d'invitation</strong> fourni par son administrateur (rôle « Saisie »).</p>
-        <div class="field"><label for="ob-code">Code d'invitation</label>
-          <input id="ob-code" type="text" placeholder="Code reçu" style="text-transform:uppercase" autocomplete="off" /></div>
-      </div>
-      <button id="ob-submit" class="btn btn-primary btn-block">Valider</button>
+      <p class="muted mb">Rejoignez votre entreprise avec le <strong>code d'invitation</strong> communiqué
+        par son administrateur ou par la plateforme. La 1ʳᵉ personne à l'utiliser en devient l'administrateur.</p>
+      <div class="field"><label for="ob-code">Code d'invitation</label>
+        <input id="ob-code" type="text" placeholder="Code reçu" style="text-transform:uppercase" autocomplete="off" /></div>
+      <button id="ob-submit" class="btn btn-primary btn-block">Rejoindre l'entreprise</button>
     </div>`;
 
-  const apply = () => {
-    const join = document.querySelector('input[name="ob-mode"]:checked')?.value === "join";
-    $(".ob-create").classList.toggle("hidden", join);
-    $(".ob-join").classList.toggle("hidden", !join);
-  };
-  $$('input[name="ob-mode"]').forEach((r) => r.addEventListener("change", apply));
-
   $("#ob-submit").addEventListener("click", async () => {
-    const join = document.querySelector('input[name="ob-mode"]:checked')?.value === "join";
+    const code = $("#ob-code").value.trim();
+    if (!code) return toast("Saisissez le code d'invitation.", "warn");
     try {
-      if (join) {
-        const code = $("#ob-code").value.trim();
-        if (!code) return toast("Saisissez le code d'invitation.", "warn");
-        await rejoindreOrganisation(code);
-      } else {
-        const nom = $("#ob-nom").value.trim();
-        if (!nom) return toast("Le nom est requis.", "warn");
-        await creerOrganisation(nom, $("#ob-ncc").value.trim());
-      }
+      await rejoindreOrganisation(code);
       await demarrerSession();
     } catch (e) { toast(e.message, "error"); }
   });

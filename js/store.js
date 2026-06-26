@@ -136,6 +136,15 @@ export async function superadminGenererCode(orgId) {
   return data; // nouveau code
 }
 
+// Crée une entreprise (super admin) sans l'attacher. Renvoie { id, code_invitation }.
+export async function superadminCreerOrganisation(nom, ncc) {
+  const { data, error } = await supabase.rpc("superadmin_creer_organisation", {
+    p_nom: nom, p_ncc: ncc || null,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data; // la fonction renvoie un set
+}
+
 // Définit l'ERP comptable de l'organisation ('sap' | 'sage'). La RLS
 // (`org_admin_update`) réserve cette écriture aux administrateurs.
 export async function majErpOrganisation(erp) {
