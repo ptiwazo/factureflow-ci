@@ -356,6 +356,91 @@ export async function supprimerFacture(id) {
   if (error) throw error;
 }
 
+/* ------------------------------ Commandes -------------------------- */
+export async function listerCommandes({ fournisseurId, statut } = {}) {
+  let q = supabase.from("commandes")
+    .select("*, fournisseurs(nom)")
+    .order("date", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (fournisseurId) q = q.eq("fournisseur_id", fournisseurId);
+  if (statut) q = q.eq("statut", statut);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getCommande(id) {
+  const { data, error } = await supabase
+    .from("commandes").select("*, fournisseurs(*)").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function getCommandeLignes(commandeId) {
+  const { data, error } = await supabase
+    .from("commandes_lignes").select("*").eq("commande_id", commandeId).order("created_at");
+  if (error) throw error;
+  return data || [];
+}
+
+// Crée une commande + ses lignes.
+export async function creerCommandeComplete({ entete, lignes }) {
+  const org = orgId();
+  const { data: cmd, error } = await supabase.from("commandes").insert({
+    org_id: org,
+    fournisseur_id: entete.fournisseur_id || null,
+    numero: entete.numero || null,
+    date: entete.date || null,
+    devise: entete.devise || CONFIG.DEVISE_DEFAUT,
+    total_ht: entete.total_ht || 0,
+    created_by: getProfil()?.user?.id,
+  }).select().single();
+  if (error) throw error;
+
+  if (Array.isArray(lignes) && lignes.length) {
+    const rows = lignes.map((l) => ({
+      commande_id: cmd.id,
+      designation: l.designation || "",
+      quantite: l.quantite || 0,
+      prix_unitaire: l.prix_unitaire || 0,
+      montant_ht: l.montant_ht || 0,
+    }));
+    const { error: errL } = await supabase.from("commandes_lignes").insert(rows);
+    if (errL) throw errL;
+  }
+  await journaliser("creation_commande", `commande:${cmd.id}`);
+  return cmd;
+}
+
+export async function majStatutCommande(id, statut) {
+  const { error } = await supabase.from("commandes").update({ statut }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function supprimerCommande(id) {
+  const { error } = await supabase.from("commandes").delete().eq("id", id);
+  if (error) throw error;
+  await journaliser("suppression_commande", `commande:${id}`);
+}
+
+// Lie (ou délie si commandeId=null) une facture à une commande.
+export async function lierFactureCommande(factureId, commandeId) {
+  const { error } = await supabase.from("factures")
+    .update({ commande_id: commandeId || null }).eq("id", factureId);
+  if (error) throw error;
+  await journaliser(commandeId ? "rapprochement_commande" : "delier_commande", `facture:${factureId}`);
+}
+
+// Factures rattachées à une commande (pour le rapprochement par montant).
+export async function facturesParCommande(commandeId) {
+  const { data, error } = await supabase.from("factures")
+    .select("id, numero, date, total_ht, total_ttc, statut")
+    .eq("commande_id", commandeId)
+    .order("date", { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+
 /* ------------------------------ Storage ---------------------------- */
 function extensionDe(fichier) {
   const t = fichier.type || "";

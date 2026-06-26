@@ -18,6 +18,7 @@ import * as capture      from "./modules/capture.js";
 import * as verification from "./modules/verification.js";
 import * as factures     from "./modules/factures.js";
 import * as fournisseurs from "./modules/fournisseurs.js";
+import * as commandes    from "./modules/commandes.js";
 import * as echeancier   from "./modules/echeancier.js";
 import * as tva          from "./modules/tva.js";
 import * as analytics    from "./modules/analytics.js";
@@ -46,6 +47,9 @@ const routes = {
   facture:         (p) => factures.renderDetail(p),
   fournisseurs:    (p) => fournisseurs.renderListe(p),
   fournisseur:     (p) => fournisseurs.renderDetail(p),
+  commandes:       (p) => commandes.renderListe(p),
+  commande:        (p) => commandes.renderDetail(p),
+  "nouvelle-commande": () => commandes.renderNouvelle(),
   echeancier:      (p) => echeancier.render(p),
   tva:             (p) => tva.render(p),
   analytics:       (p) => analytics.render(p),

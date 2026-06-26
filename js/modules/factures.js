@@ -5,6 +5,7 @@ import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, open
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
   majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
+  lierFactureCommande, listerCommandes, getCommande, facturesParCommande,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
@@ -205,6 +206,19 @@ export async function renderDetail(id) {
   const aujISO = new Date().toISOString().slice(0, 10);
   const fourn = f.fournisseurs || {};
 
+  // Rapprochement bon de commande (best-effort).
+  const peutLier = peutEcrire || peutControler;
+  let cmd = null, facturesCmd = [], commandesDispo = [];
+  if (f.commande_id) {
+    try { [cmd, facturesCmd] = await Promise.all([getCommande(f.commande_id), facturesParCommande(f.commande_id)]); } catch { /* ignore */ }
+  } else if (peutLier && f.fournisseur_id) {
+    try { commandesDispo = (await listerCommandes({ fournisseurId: f.fournisseur_id })).filter((c) => c.statut !== "annulee"); } catch { /* ignore */ }
+  }
+  const cmdTotal = Number(cmd?.total_ht) || 0;
+  const factureTotal = facturesCmd.filter((x) => x.statut !== "non_conforme").reduce((s, x) => s + (Number(x.total_ht) || 0), 0);
+  const ecartCmd = Math.round((factureTotal - cmdTotal) * 100) / 100;
+  const surCmd = ecartCmd > 0.01;
+
   setView(`
     <div class="row between">
       <a href="#/factures" class="btn btn-ghost btn-sm">← Factures</a>
@@ -271,6 +285,29 @@ export async function renderDetail(id) {
       ${peutEcrire && ip.statut !== "a_payer" ? `<button id="btn-annuler-paiement" class="btn btn-ghost btn-sm" style="margin-left:8px">Annuler le paiement</button>` : ""}
     </div>
 
+    <div class="card">
+      <h3>Bon de commande</h3>
+      ${cmd ? `
+        <p style="margin-top:0">Rattachée à la commande <a href="#/commande/${cmd.id}"><strong>${esc(cmd.numero || "sans n°")}</strong></a> · ${dateFr(cmd.date)}.</p>
+        <div class="kpi-grid">
+          <div class="kpi accent-teal"><div class="kpi-label">Commandé HT</div><div class="kpi-value" style="font-size:1.05rem">${fcfa(cmdTotal, f.devise)}</div></div>
+          <div class="kpi"><div class="kpi-label">Déjà facturé HT</div><div class="kpi-value" style="font-size:1.05rem">${fcfa(factureTotal, f.devise)}</div></div>
+          <div class="kpi ${surCmd ? "accent-danger" : "accent-teal"}"><div class="kpi-label">${surCmd ? "Sur-facturation" : "Reste à facturer"}</div>
+            <div class="kpi-value" style="font-size:1.05rem">${fcfa(surCmd ? ecartCmd : Math.max(0, -ecartCmd), f.devise)}</div></div>
+        </div>
+        ${surCmd ? `<div class="alert alert-danger">⚠️ <div>Le montant facturé dépasse la commande de <strong>${fcfa(ecartCmd, f.devise)}</strong>.</div></div>` : ""}
+        ${peutLier ? `<button id="btn-delier" class="btn btn-ghost btn-sm">Délier la commande</button>` : ""}`
+      : (peutLier ? (commandesDispo.length ? `
+        <div class="row" style="gap:8px;align-items:flex-end">
+          <div class="grow field"><label for="sel-cmd">Rapprocher à une commande</label>
+            <select id="sel-cmd"><option value="">— Choisir —</option>
+              ${commandesDispo.map((c) => `<option value="${esc(c.id)}">${esc(c.numero || "sans n°")} · ${fcfa(c.total_ht, c.devise)}</option>`).join("")}</select></div>
+          <button id="btn-lier" class="btn btn-primary btn-sm">Rapprocher</button>
+        </div>`
+        : `<p class="muted">Aucune commande pour ce fournisseur. <a href="#/nouvelle-commande">Créer une commande</a>.</p>`)
+      : `<p class="muted">Non rattachée à une commande.</p>`)}
+    </div>
+
     <div class="row wrap" style="gap:10px;margin-bottom:24px">
       ${f.fichier_url ? `<button id="btn-original" class="btn btn-secondary">📎 Voir l'original</button>` : ""}
       <button id="btn-pdf" class="btn btn-secondary">📄 PDF récap</button>
@@ -323,6 +360,22 @@ export async function renderDetail(id) {
       await journaliser("retour_controle", `facture:${f.id}`);
       renderDetail(f.id);
     } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+
+  // Rapprochement bon de commande.
+  const bl = $("#btn-lier");
+  if (bl) bl.onclick = async (e) => {
+    const cid = $("#sel-cmd").value;
+    if (!cid) return toast("Choisissez une commande.", "warn");
+    busy(e.currentTarget, true, "…");
+    try { await lierFactureCommande(f.id, cid); toast("Facture rapprochée à la commande.", "success"); renderDetail(f.id); }
+    catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
+  };
+  const bdl = $("#btn-delier");
+  if (bdl) bdl.onclick = async (e) => {
+    busy(e.currentTarget, true, "…");
+    try { await lierFactureCommande(f.id, null); toast("Commande déliée.", "info"); renderDetail(f.id); }
+    catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
   };
 
   // Paiement : enregistrer un règlement (intégral ou partiel).
