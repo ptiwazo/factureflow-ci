@@ -21,6 +21,7 @@ import * as fournisseurs from "./modules/fournisseurs.js";
 import * as echeancier   from "./modules/echeancier.js";
 import * as tva          from "./modules/tva.js";
 import * as analytics    from "./modules/analytics.js";
+import * as audit        from "./modules/audit.js";
 import * as superadmin   from "./modules/superadmin.js";
 import * as settings     from "./modules/settings.js";
 
@@ -48,6 +49,7 @@ const routes = {
   echeancier:      (p) => echeancier.render(p),
   tva:             (p) => tva.render(p),
   analytics:       (p) => analytics.render(p),
+  audit:           (p) => audit.render(p),
   superadmin:      (p) => superadmin.render(p),
   settings:        (p) => settings.render(p),
 };

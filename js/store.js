@@ -154,6 +154,7 @@ export async function majErpOrganisation(erp) {
   if (!data || !data.length) {
     throw new Error("Modification refusée : rôle administrateur requis.");
   }
+  await journaliser("changement_erp", erp);
 }
 
 /* ----------------------------- Utilisateurs ------------------------ */
@@ -178,6 +179,7 @@ export async function majRoleUtilisateur(id, role) {
     throw new Error("Modification refusée : rôle administrateur requis. " +
       "Si votre rôle a changé récemment, déconnectez-vous puis reconnectez-vous.");
   }
+  await journaliser("changement_role", `user:${id} → ${role}`);
 }
 
 // Active / désactive un utilisateur (admin uniquement, via RLS users_admin_write).
@@ -189,6 +191,7 @@ export async function majActifUtilisateur(id, actif) {
   if (!data || !data.length) {
     throw new Error("Modification refusée : rôle administrateur requis.");
   }
+  await journaliser(actif ? "activation" : "desactivation", `user:${id}`);
 }
 
 /* ------------------------------ Factures --------------------------- */
@@ -393,9 +396,13 @@ export async function journaliser(action, cible) {
   } catch { /* log non bloquant */ }
 }
 
-export async function listerLogs(limite = 50) {
-  const { data, error } = await supabase.from("logs")
+// Journal d'audit (le plus récent d'abord). `avant` (timestamp ISO) permet la
+// pagination « charger plus » (entrées antérieures).
+export async function listerLogs({ limite = 50, avant = null } = {}) {
+  let q = supabase.from("logs")
     .select("*").order("created_at", { ascending: false }).limit(limite);
+  if (avant) q = q.lt("created_at", avant);
+  const { data, error } = await q;
   if (error) throw error;
   return data || [];
 }

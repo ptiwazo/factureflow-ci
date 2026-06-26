@@ -20,6 +20,7 @@ const ROLES = [
 ];
 import { exporterCSV, exporterExcel, exporterSAP, exporterSAPJournalUpload, exporterSageEcritures, getParamsSAP, setParamsSAP, getParamsSage, setParamsSage } from "./export.js";
 import { PLAN_COMPTABLE_IFRS, PLAN_PAR_SECTION, REGLES_CONTROLE } from "../comptes-charge-ifrs.js";
+import { libelleAction } from "./audit.js";
 
 export async function render() {
   // Rafraîchit le profil (rôle) depuis la base : évite d'afficher la gestion des
@@ -178,8 +179,9 @@ export async function render() {
     </div>` : ""}
 
     ${estAdmin ? `<div class="card">
-      <h3>Journal d'audit</h3>
-      <div id="logs"><span class="spinner dark"></span></div>
+      <div class="row between"><h3 style="margin:0">Journal d'audit</h3>
+        <a href="#/audit" class="btn btn-ghost btn-sm">Journal complet →</a></div>
+      <div id="logs" style="margin-top:8px"><span class="spinner dark"></span></div>
     </div>` : ""}
 
     <div class="center" style="margin-bottom:24px">
@@ -417,11 +419,12 @@ async function chargerUsers() {
 async function chargerLogs() {
   const cible = $("#logs");
   try {
-    const logs = await listerLogs(40);
+    const [logs, users] = await Promise.all([listerLogs({ limite: 8 }), listerUtilisateurs().catch(() => [])]);
     if (!logs.length) { cible.innerHTML = `<p class="muted">Aucune action enregistrée.</p>`; return; }
+    const emails = new Map(users.map((u) => [u.id, u.email]));
     cible.innerHTML = logs.map((l) => `
       <div class="row between" style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem">
-        <span><strong>${esc(l.action)}</strong> <span class="muted">${esc(l.cible || "")}</span></span>
+        <span><strong>${esc(libelleAction(l.action))}</strong> <span class="muted">${esc(emails.get(l.user_id) || "")}</span></span>
         <span class="muted">${dateFr(l.created_at)}</span>
       </div>`).join("");
   } catch (e) {
