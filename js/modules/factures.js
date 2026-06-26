@@ -10,6 +10,7 @@ import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
 import { CATEGORIES_CHARGE } from "../config.js";
 import { COMPTES_PAR_NUMERO, PLAN_PAR_SECTION } from "../comptes-charge-ifrs.js";
+import { notifierCircuit } from "../notify.js";
 import { navigate } from "../app.js";
 
 // <option>/<optgroup> des comptes de charge du plan de référence, avec
@@ -213,6 +214,7 @@ export async function renderDetail(id) {
       await majCategoriesLignes(maj);
       await majStatutFacture(f.id, "a_valider");
       await journaliser("controle_comptes", `facture:${f.id}`);
+      notifierCircuit("a_valider", f.id);
       toast("Comptes confirmés — facture prête à valider.", "success");
       renderDetail(f.id);
     } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
@@ -225,6 +227,7 @@ export async function renderDetail(id) {
     try {
       await majStatutFacture(f.id, "validee");
       await journaliser("validation", `facture:${f.id}`);
+      notifierCircuit("validee", f.id);
       toast("Facture validée ✔", "success");
       renderDetail(f.id);
     } catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }

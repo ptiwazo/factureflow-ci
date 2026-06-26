@@ -9,6 +9,7 @@
 import { $, $$, setView, toast, fcfa, dateFr, esc, emptyState, busy, paiementBadge, infoPaiement, debutJour } from "../ui.js";
 import { listerFactures, majPaiement, journaliser } from "../store.js";
 import { getProfil } from "../auth.js";
+import { notifierCircuit } from "../notify.js";
 
 export async function render() {
   setView(`<div class="loading-block"><span class="spinner dark"></span><p>Chargement de l'échéancier…</p></div>`);
@@ -47,6 +48,7 @@ export async function render() {
       <div class="kpi accent-danger"><div class="kpi-label">Dont en retard</div>
         <div class="kpi-value" style="font-size:1.15rem">${fcfa(totalRetard)}</div></div>
     </div>
+    ${peutEcrire && enRetard.length ? `<button id="ech-relance" class="btn btn-secondary btn-sm" style="margin-bottom:12px">✉ Envoyer le récap des retards</button>` : ""}
 
     ${items.length ? "" : emptyState("✅", "Rien à régler", "Toutes les factures exploitables sont payées.")}
     ${section("⏰ En retard", enRetard, peutEcrire, true)}
@@ -60,6 +62,15 @@ export async function render() {
     $$("[data-regler]").forEach((btn) => {
       btn.onclick = (e) => reglerRapide(e.currentTarget.dataset.regler, e.currentTarget);
     });
+    const relance = $("#ech-relance");
+    if (relance) relance.onclick = async (e) => {
+      busy(e.currentTarget, true, "Envoi…");
+      try {
+        await notifierCircuit("retards");
+        toast("Récap des retards envoyé (si l'e-mail est configuré).", "success");
+      } catch { toast("Envoi indisponible.", "warn"); }
+      finally { busy(e.currentTarget, false); }
+    };
   }
 }
 

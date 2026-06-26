@@ -1,0 +1,8 @@
+{
+  "name": "factureflow-ci-functions",
+  "private": true,
+  "description": "Dépendances des Netlify Functions (envoi d'e-mails de notification).",
+  "dependencies": {
+    "nodemailer": "^6.9.14"
+  }
+}

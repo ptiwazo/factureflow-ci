@@ -11,6 +11,7 @@ import { CONFIG, COMPTE_DEBOURS } from "../config.js";
 import { trouverOuCreerFournisseur, creerFactureComplete, journaliser, chercherDoublon, rechercherFournisseur } from "../store.js";
 import { getProfil } from "../auth.js";
 import { draft, navigate, resetDraft } from "../app.js";
+import { notifierCircuit } from "../notify.js";
 import { analyserCourant } from "./capture.js";
 import { PLAN_PAR_SECTION, COMPTES_PAR_NUMERO } from "../comptes-charge-ifrs.js";
 
@@ -387,6 +388,8 @@ async function sauvegarder(ctx) {
   });
 
   await journaliser(ctx.statut === "non_conforme" ? "facture_non_conforme" : "envoi_controle", `facture:${facture.id}`);
+  // Notifie le Contrôle de Gestion (best-effort, ne bloque pas).
+  if (ctx.statut === "a_controler") notifierCircuit("a_controler", facture.id);
   toast(ctx.statut === "non_conforme" ? "Enregistrée (non conforme)." : "Envoyée au contrôle de gestion ✔", "success");
 
   // Données de la facture courante traitées : on les nettoie.

@@ -18,6 +18,9 @@ export const CONFIG = {
   // En dev local via `netlify dev`, l'URL relative ci-dessous fonctionne.
   AI_PROXY_URL: "/.netlify/functions/ai-proxy",
 
+  // Fonction d'envoi des notifications du circuit (e-mail SMTP).
+  NOTIFY_URL: "/.netlify/functions/notify",
+
   // Storage
   BUCKET: "factures",
 
