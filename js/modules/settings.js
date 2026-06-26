@@ -8,7 +8,7 @@
 ===================================================================== */
 import { $, $$, setView, toast, dateFr, esc, busy, emptyState } from "../ui.js";
 import { getProfil, deconnexion, chargerProfil } from "../auth.js";
-import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majActifUtilisateur, majErpOrganisation, majLogoOrganisation, getOrganisationCourante } from "../store.js";
+import { listerFactures, listerLogs, majStatutFacture, listerUtilisateurs, majRoleUtilisateur, majActifUtilisateur, majErpOrganisation, majLogoOrganisation, getOrganisationCourante, listerClotures, cloturerPeriode, rouvrirPeriode } from "../store.js";
 
 // Rôles assignables (du plus au moins privilégié). Doit refléter l'enum
 // `user_role` de la base (cf. supabase/schema.sql + migration_workflow.sql).
@@ -195,6 +195,20 @@ export async function render() {
     </div>` : ""}
 
     ${estAdmin ? `<div class="card">
+      <h3>Clôture des périodes</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Verrouillez un mois après déclaration/export : les factures de ce mois ne pourront plus être
+        modifiées, supprimées ni payées. Réversible (réouverture).
+      </p>
+      <div class="row" style="gap:12px;align-items:flex-end">
+        <div class="field" style="max-width:170px"><label for="clo-mois">Mois</label>
+          <input id="clo-mois" type="month" value="${new Date().toISOString().slice(0, 7)}" /></div>
+        <button id="clo-fermer" class="btn btn-primary btn-sm">Clôturer</button>
+      </div>
+      <div id="clo-liste" style="margin-top:10px"><span class="spinner dark"></span></div>
+    </div>` : ""}
+
+    ${estAdmin ? `<div class="card">
       <div class="row between"><h3 style="margin:0">Journal d'audit</h3>
         <a href="#/audit" class="btn btn-ghost btn-sm">Journal complet →</a></div>
       <div id="logs" style="margin-top:8px"><span class="spinner dark"></span></div>
@@ -274,6 +288,9 @@ export async function render() {
 
   // --- Logo (admin) ---
   if (estAdmin) chargerLogo();
+
+  // --- Clôtures (admin) ---
+  if (estAdmin) chargerClotures();
 
   // --- Utilisateurs (admin) ---
   if (estAdmin) chargerUsers();
@@ -378,6 +395,37 @@ function lireImageRedim(file, maxW = 240) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function chargerClotures() {
+  const liste = $("#clo-liste");
+  if (!liste) return;
+  const dessiner = async () => {
+    try {
+      const cl = await listerClotures();
+      liste.innerHTML = cl.length ? cl.map((c) => `
+        <div class="row between" style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.9rem">
+          <span>🔒 <strong>${esc(c.periode)}</strong> <span class="muted">clôturé</span></span>
+          <button class="btn btn-ghost btn-sm clo-open" data-p="${esc(c.periode)}">Rouvrir</button>
+        </div>`).join("")
+        : `<p class="muted" style="font-size:.85rem">Aucune période clôturée.</p>`;
+      $$(".clo-open", liste).forEach((b) => b.onclick = async () => {
+        if (!confirm(`Rouvrir la période ${b.dataset.p} ? Les factures de ce mois redeviennent modifiables.`)) return;
+        try { await rouvrirPeriode(b.dataset.p); toast("Période rouverte.", "info"); dessiner(); }
+        catch (e) { toast(e.message, "error"); }
+      });
+    } catch (e) { liste.innerHTML = `<p class="muted">Indisponible : ${esc(e.message)}</p>`; }
+  };
+  $("#clo-fermer").onclick = async (e) => {
+    const p = $("#clo-mois").value;
+    if (!p) return toast("Choisissez un mois.", "warn");
+    if (!confirm(`Clôturer ${p} ? Les factures de ce mois seront verrouillées.`)) return;
+    busy(e.currentTarget, true, "…");
+    try { await cloturerPeriode(p); toast(`Période ${p} clôturée.`, "success"); dessiner(); }
+    catch (err) { toast(err.message || "Échec.", "error"); }
+    finally { busy(e.currentTarget, false); }
+  };
+  dessiner();
 }
 
 async function chargerLogo() {

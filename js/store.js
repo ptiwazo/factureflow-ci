@@ -595,6 +595,27 @@ export async function journaliser(action, cible) {
 
 // Journal d'audit (le plus récent d'abord). `avant` (timestamp ISO) permet la
 // pagination « charger plus » (entrées antérieures).
+/* ----------------------------- Clôtures ---------------------------- */
+// Périodes ('AAAA-MM') clôturées de l'organisation.
+export async function listerClotures() {
+  const { data, error } = await supabase.from("clotures")
+    .select("periode, created_at").order("periode", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+export async function cloturerPeriode(periode) {
+  const { error } = await supabase.from("clotures")
+    .insert({ org_id: orgId(), periode, created_by: getProfil()?.user?.id });
+  if (error) throw error;
+  await journaliser("cloture_periode", periode);
+}
+export async function rouvrirPeriode(periode) {
+  const { error } = await supabase.from("clotures")
+    .delete().eq("org_id", orgId()).eq("periode", periode);
+  if (error) throw error;
+  await journaliser("reouverture_periode", periode);
+}
+
 export async function listerLogs({ limite = 50, avant = null } = {}) {
   let q = supabase.from("logs")
     .select("*").order("created_at", { ascending: false }).limit(limite);

@@ -25,6 +25,8 @@ export const ACTIONS = {
   changement_erp: "Changement d'ERP",
   changement_logo: "Logo mis à jour",
   suppression_logo: "Logo retiré",
+  cloture_periode: "Clôture de période",
+  reouverture_periode: "Réouverture de période",
   maj_fournisseur: "Modification fournisseur",
   import_fournisseurs: "Import de fournisseurs",
   releve_fournisseur: "Relevé fournisseur (PDF)",

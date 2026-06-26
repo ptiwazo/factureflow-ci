@@ -442,3 +442,38 @@ drop policy if exists rec_write on public.recurrences;
 create policy rec_write on public.recurrences for all
   using (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion'))
   with check (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion'));
+
+-- Clôture / verrouillage de période (cf. migration_clotures.sql)
+create table if not exists public.clotures (
+  org_id uuid not null references public.organisations(id) on delete cascade,
+  periode text not null,
+  created_at timestamptz not null default now(),
+  created_by uuid references auth.users(id),
+  primary key (org_id, periode)
+);
+alter table public.clotures enable row level security;
+drop policy if exists clot_select on public.clotures;
+create policy clot_select on public.clotures for select using (org_id = public.current_org_id());
+drop policy if exists clot_write on public.clotures;
+create policy clot_write on public.clotures for all
+  using (org_id = public.current_org_id() and public.current_role()::text = 'admin')
+  with check (org_id = public.current_org_id() and public.current_role()::text = 'admin');
+
+create or replace function public.periode_verrouillee(p_date date)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.clotures
+    where org_id = public.current_org_id() and p_date is not null
+      and periode = to_char(p_date, 'YYYY-MM'));
+$$;
+
+-- Recrée fact_write / lignes_write en intégrant le verrou de période.
+drop policy if exists fact_write on public.factures;
+create policy fact_write on public.factures for all
+  using (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion') and not public.periode_verrouillee(date))
+  with check (org_id = public.current_org_id() and public.current_role()::text in ('admin','saisie','controle_gestion') and not public.periode_verrouillee(date));
+drop policy if exists lignes_write on public.lignes;
+create policy lignes_write on public.lignes for all
+  using (exists (select 1 from public.factures f where f.id = lignes.facture_id and f.org_id = public.current_org_id()
+    and public.current_role()::text in ('admin','saisie','controle_gestion') and not public.periode_verrouillee(f.date)))
+  with check (exists (select 1 from public.factures f where f.id = lignes.facture_id and f.org_id = public.current_org_id()
+    and public.current_role()::text in ('admin','saisie','controle_gestion') and not public.periode_verrouillee(f.date)));

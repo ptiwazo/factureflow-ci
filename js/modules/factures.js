@@ -6,6 +6,7 @@ import {
   listerFactures, getFacture, getLignes, majStatutFacture,
   majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
   lierFactureCommande, lierLigneCommande, listerCommandes, getCommande, getCommandeLignes, facturesParCommande,
+  listerClotures,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
@@ -194,12 +195,17 @@ export async function renderDetail(id) {
     setView(emptyState("⚠️", "Erreur", e.message)); return;
   }
 
+  // Verrou de période : si le mois de la facture est clôturé, lecture seule.
+  let clos = new Set();
+  try { clos = new Set((await listerClotures()).map((c) => c.periode)); } catch { /* ignore */ }
+  const verrou = clos.has((f.date || "").slice(0, 7));
+
   const role = getProfil()?.role;
-  const peutEcrire = role === "admin" || role === "saisie";
-  const peutSupprimer = role === "admin";
+  const peutEcrire = (role === "admin" || role === "saisie") && !verrou;
+  const peutSupprimer = role === "admin" && !verrou;
   // Contrôle de Gestion : confirme/modifie les comptes (a_controler → a_valider)
   // puis valide (a_valider → validee). L'admin a les mêmes droits.
-  const peutControler = role === "admin" || role === "controle_gestion";
+  const peutControler = (role === "admin" || role === "controle_gestion") && !verrou;
   const modeControle = peutControler && f.statut === "a_controler";
   const erp = getProfil()?.erp || "sap"; // affiche la colonne OHADA si 'sage'
   const ip = infoPaiement(f);            // état de règlement
@@ -245,6 +251,7 @@ export async function renderDetail(id) {
     <h1 class="page-title">${esc(fourn.nom || "Fournisseur inconnu")}</h1>
 
     ${!fourn.ncc ? `<div class="alert alert-danger">⛔ NCC fournisseur absent — facture non conforme (à confirmer DGI/expert-comptable).</div>` : ""}
+    ${verrou ? `<div class="alert alert-warn">🔒 <div>Période <strong>clôturée</strong> (${esc((f.date || "").slice(0, 7))}) — facture <strong>verrouillée</strong> (lecture seule). Un administrateur peut rouvrir la période dans Réglages.</div></div>` : ""}
 
     <div class="card">
       <div class="detail-grid">
