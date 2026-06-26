@@ -349,11 +349,14 @@ export async function majPaiement(id, patch) {
 export async function supprimerFacture(id) {
   // Les lignes sont supprimées en cascade (FK). On retire aussi l'original.
   const f = await getFacture(id);
+  const commandeId = f?.commande_id || null;
   if (f?.fichier_url) {
     await supabase.storage.from(CONFIG.BUCKET).remove([f.fichier_url]).catch(() => {});
   }
   const { error } = await supabase.from("factures").delete().eq("id", id);
   if (error) throw error;
+  // La facture comptait peut-être dans une commande → recalcul du statut.
+  if (commandeId) await recalculerStatutCommande(commandeId);
 }
 
 /* ------------------------------ Commandes -------------------------- */
@@ -423,12 +426,45 @@ export async function supprimerCommande(id) {
   await journaliser("suppression_commande", `commande:${id}`);
 }
 
-// Lie (ou délie si commandeId=null) une facture à une commande.
+// Lie (ou délie si commandeId=null) une facture à une commande, puis recalcule
+// le statut (auto « soldée ») des commandes impactées.
 export async function lierFactureCommande(factureId, commandeId) {
+  const { data: avant } = await supabase.from("factures")
+    .select("commande_id").eq("id", factureId).maybeSingle();
+  const ancien = avant?.commande_id || null;
   const { error } = await supabase.from("factures")
     .update({ commande_id: commandeId || null }).eq("id", factureId);
   if (error) throw error;
   await journaliser(commandeId ? "rapprochement_commande" : "delier_commande", `facture:${factureId}`);
+  for (const cid of [...new Set([ancien, commandeId].filter(Boolean))]) await recalculerStatutCommande(cid);
+}
+
+// Associe explicitement une ligne de facture à une ligne de commande (override
+// du matching automatique par libellé). commandeLigneId=null pour réinitialiser.
+export async function lierLigneCommande(ligneId, commandeLigneId) {
+  const { error } = await supabase.from("lignes")
+    .update({ commande_ligne_id: commandeLigneId || null }).eq("id", ligneId);
+  if (error) throw error;
+}
+
+// Recalcule le statut d'une commande : « soldée » si le facturé (HT, hors non
+// conformes) couvre le total commandé, sinon « ouverte ». Ne touche pas aux
+// commandes annulées. Best-effort.
+async function recalculerStatutCommande(commandeId) {
+  if (!commandeId) return;
+  try {
+    const cmd = await getCommande(commandeId);
+    if (!cmd || cmd.statut === "annulee") return;
+    const factures = await facturesParCommande(commandeId);
+    const facture = factures.filter((f) => f.statut !== "non_conforme")
+      .reduce((s, f) => s + (Number(f.total_ht) || 0), 0);
+    const total = Number(cmd.total_ht) || 0;
+    const nouveau = (total > 0 && facture + 0.01 >= total) ? "soldee" : "ouverte";
+    if (nouveau !== cmd.statut) {
+      await majStatutCommande(commandeId, nouveau);
+      await journaliser("commande_statut_auto", `commande:${commandeId} → ${nouveau}`);
+    }
+  } catch { /* best-effort */ }
 }
 
 // Factures rattachées à une commande (pour le rapprochement par montant).

@@ -30,6 +30,7 @@ export const ACTIONS = {
   suppression_commande: "Suppression de commande",
   rapprochement_commande: "Rapprochement commande",
   delier_commande: "Commande déliée",
+  commande_statut_auto: "Commande — statut auto",
   export_csv: "Export CSV",
   export_excel: "Export Excel",
   export_sap_fi: "Export SAP (FI)",

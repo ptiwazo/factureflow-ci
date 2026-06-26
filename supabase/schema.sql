@@ -409,3 +409,7 @@ create policy cmd_lignes_write on public.commandes_lignes for all
     and public.current_role()::text in ('admin','saisie','controle_gestion')))
   with check (exists (select 1 from public.commandes c where c.id = commandes_lignes.commande_id and c.org_id = public.current_org_id()
     and public.current_role()::text in ('admin','saisie','controle_gestion')));
+
+-- Association manuelle ligne facture -> ligne commande (cf. migration_commandes_finitions.sql)
+alter table public.lignes
+  add column if not exists commande_ligne_id uuid references public.commandes_lignes(id) on delete set null;

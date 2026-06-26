@@ -5,7 +5,7 @@ import { $, $$, setView, toast, fcfa, dateFr, esc, statutBadge, emptyState, open
 import {
   listerFactures, getFacture, getLignes, majStatutFacture,
   majCategoriesLignes, majPaiement, supprimerFacture, urlOriginalSignee, journaliser,
-  lierFactureCommande, listerCommandes, getCommande, getCommandeLignes, facturesParCommande,
+  lierFactureCommande, lierLigneCommande, listerCommandes, getCommande, getCommandeLignes, facturesParCommande,
 } from "../store.js";
 import { getProfil } from "../auth.js";
 import { exporterFacturePDF } from "./export.js";
@@ -223,15 +223,17 @@ export async function renderDetail(id) {
 
   // Comparaison ligne-à-ligne (matching par désignation normalisée).
   const normDes = (s) => (s || "").toString().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
-  const cmdMap = new Map(cmdLignes.map((cl) => [normDes(cl.designation), cl]));
+  const cmdByDes = new Map(cmdLignes.map((cl) => [normDes(cl.designation), cl]));
+  const cmdById = new Map(cmdLignes.map((cl) => [cl.id, cl]));
   const comparaison = (cmd ? lignes : []).map((l) => {
-    const c = cmdMap.get(normDes(l.designation));
+    // Association explicite (manuelle) prioritaire, sinon matching par libellé.
+    const c = l.commande_ligne_id ? cmdById.get(l.commande_ligne_id) : cmdByDes.get(normDes(l.designation));
     const qF = Number(l.quantite) || 0, puF = Number(l.prix_unitaire) || 0;
     const qC = c ? Number(c.quantite) || 0 : null, puC = c ? Number(c.prix_unitaire) || 0 : null;
     const eQ = c ? Math.round((qF - qC) * 1000) / 1000 : null;
     const eP = c ? Math.round((puF - puC) * 100) / 100 : null;
     const ok = c && Math.abs(eQ) < 0.001 && Math.abs(eP) < 0.01;
-    return { l, c, qF, qC, puF, puC, eQ, eP, ok };
+    return { l, c, qF, qC, puF, puC, eQ, eP, ok, explicite: !!l.commande_ligne_id };
   });
   const ecartsLigne = comparaison.filter((x) => !x.ok).length;
 
@@ -315,14 +317,18 @@ export async function renderDetail(id) {
         <h4 style="margin:12px 0 4px">Comparaison ligne à ligne ${ecartsLigne ? `<span style="color:var(--danger)">(${ecartsLigne} écart${ecartsLigne > 1 ? "s" : ""})</span>` : `<span style="color:var(--success)">✓</span>`}</h4>
         <p class="muted" style="font-size:.76rem;margin:0 0 6px">Rapprochement par désignation (qté & prix unitaire). « Hors commande » = ligne absente du bon de commande.</p>
         <div style="overflow-x:auto"><table class="lignes-table">
-          <thead><tr><th class="col-des">Désignation</th><th>Qté cmd</th><th>Qté fact</th><th>PU cmd</th><th>PU fact</th></tr></thead>
+          <thead><tr><th class="col-des">Désignation</th><th>Qté cmd</th><th>Qté fact</th><th>PU cmd</th><th>PU fact</th>${peutLier ? "<th>Lier à</th>" : ""}</tr></thead>
           <tbody>${comparaison.map((x) => `<tr style="${x.c ? (x.ok ? "" : "background:var(--danger-50)") : "background:#FEF3C7"}">
-            <td class="col-des">${esc(x.l.designation)}${x.c ? "" : ` <span class="muted">(hors commande)</span>`}</td>
+            <td class="col-des">${esc(x.l.designation)}${x.c ? (x.explicite ? ` <span class="muted">(lié)</span>` : "") : ` <span class="muted">(hors commande)</span>`}</td>
             <td>${x.c ? x.qC : "—"}</td>
             <td>${x.qF}${x.c && Math.abs(x.eQ) >= 0.001 ? ` <span style="color:var(--danger)">(${x.eQ > 0 ? "+" : ""}${x.eQ})</span>` : ""}</td>
             <td>${x.c ? fcfa(x.puC, f.devise) : "—"}</td>
             <td>${fcfa(x.puF, f.devise)}${x.c && Math.abs(x.eP) >= 0.01 ? ` <span style="color:var(--danger)">(${x.eP > 0 ? "+" : ""}${fcfa(x.eP, f.devise)})</span>` : ""}</td>
-          </tr>`).join("") || `<tr><td colspan="5" class="muted">Aucune ligne sur la facture.</td></tr>`}</tbody>
+            ${peutLier ? `<td><select class="map-cmd" data-ligne="${esc(x.l.id)}" style="min-width:120px">
+              <option value="">— Auto —</option>
+              ${cmdLignes.map((cl) => `<option value="${esc(cl.id)}"${x.l.commande_ligne_id === cl.id ? " selected" : ""}>${esc((cl.designation || "ligne").slice(0, 28))}</option>`).join("")}
+            </select></td>` : ""}
+          </tr>`).join("") || `<tr><td colspan="${peutLier ? 6 : 5}" class="muted">Aucune ligne sur la facture.</td></tr>`}</tbody>
         </table></div>
         ${peutLier ? `<button id="btn-delier" class="btn btn-ghost btn-sm" style="margin-top:8px">Délier la commande</button>` : ""}`
       : (peutLier ? (commandesDispo.length ? `
@@ -405,6 +411,12 @@ export async function renderDetail(id) {
     try { await lierFactureCommande(f.id, null); toast("Commande déliée.", "info"); renderDetail(f.id); }
     catch (err) { busy(e.currentTarget, false); toast(err.message, "error"); }
   };
+
+  // Association manuelle ligne facture ↔ ligne commande.
+  $$(".map-cmd").forEach((sel) => sel.addEventListener("change", async () => {
+    try { await lierLigneCommande(sel.dataset.ligne, sel.value || null); renderDetail(f.id); }
+    catch (err) { toast(err.message, "error"); }
+  }));
 
   // Paiement : enregistrer un règlement (intégral ou partiel).
   const bp = $("#btn-payer");
