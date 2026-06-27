@@ -583,39 +583,66 @@ export async function supprimerOperation(id) {
   if (error) throw error;
 }
 
-// Lettrage : applique le montant de l'opération en paiement de la facture, puis
-// marque l'opération lettrée + liée. Réutilise le système de règlement (majPaiement).
-export async function rapprocherOperation(opId, factureId) {
-  const { data: op } = await supabase.from("operations_bancaires").select("*").eq("id", opId).maybeSingle();
-  if (!op) throw new Error("Opération introuvable.");
+// Allocations (lettrages) d'une organisation, avec infos facture, pour l'affichage.
+export async function listerLettrages() {
+  const { data, error } = await supabase.from("lettrages")
+    .select("operation_id, facture_id, montant, factures(numero, fournisseurs(nom))");
+  if (error) throw error;
+  return data || [];
+}
+
+// Applique un paiement de `montant` sur une facture (cumul) et renvoie le statut.
+async function appliquerPaiement(factureId, montant, date) {
   const fac = await getFacture(factureId);
   if (!fac) throw new Error("Facture introuvable.");
   const ttc = Number(fac.total_ttc) || 0;
-  const nouveau = Math.min(ttc, Math.round(((Number(fac.montant_paye) || 0) + (Number(op.montant) || 0)) * 100) / 100);
+  const nouveau = Math.min(ttc, Math.round(((Number(fac.montant_paye) || 0) + montant) * 100) / 100);
   const statut = ttc > 0 && nouveau >= ttc ? "paye" : nouveau > 0 ? "partiel" : "a_payer";
-  // majPaiement échouera si la période est clôturée → on ne lettre pas alors.
-  await majPaiement(factureId, {
-    statut_paiement: statut, date_paiement: op.date || new Date().toISOString().slice(0, 10), montant_paye: nouveau,
-  });
-  const { error } = await supabase.from("operations_bancaires")
-    .update({ lettree: true, facture_id: factureId }).eq("id", opId);
-  if (error) throw error;
-  await journaliser("rapprochement_bancaire", `facture:${factureId}`);
+  await majPaiement(factureId, { statut_paiement: statut, date_paiement: date, montant_paye: nouveau });
 }
 
-// Délettrage : annule le paiement appliqué (soustrait le montant) et détache.
+// Lettrage MULTI-factures : répartit le montant de l'opération sur une ou
+// plusieurs factures (allocations), enregistre les paiements et marque lettrée.
+// allocations = [{ factureId, montant }]. Réutilise le système de règlement.
+export async function rapprocherMulti(opId, allocations) {
+  const { data: op } = await supabase.from("operations_bancaires").select("*").eq("id", opId).maybeSingle();
+  if (!op) throw new Error("Opération introuvable.");
+  const date = op.date || new Date().toISOString().slice(0, 10);
+  const valides = (allocations || []).filter((a) => a.factureId && (Number(a.montant) || 0) > 0);
+  if (!valides.length) throw new Error("Aucune allocation valide.");
+
+  const uid = getProfil()?.user?.id;
+  for (const a of valides) {
+    const montant = Math.round((Number(a.montant) || 0) * 100) / 100;
+    await appliquerPaiement(a.factureId, montant, date); // échoue si période clôturée
+    const { error } = await supabase.from("lettrages")
+      .insert({ org_id: orgId(), operation_id: opId, facture_id: a.factureId, montant, created_by: uid });
+    if (error) throw error;
+  }
+  await supabase.from("operations_bancaires")
+    .update({ lettree: true, facture_id: valides.length === 1 ? valides[0].factureId : null }).eq("id", opId);
+  await journaliser("rapprochement_bancaire", `operation:${opId} (${valides.length} facture(s))`);
+}
+
+// Délettrage : annule les paiements de toutes les allocations puis détache.
 export async function delettrerOperation(opId) {
   const { data: op } = await supabase.from("operations_bancaires").select("*").eq("id", opId).maybeSingle();
   if (!op) throw new Error("Opération introuvable.");
-  if (op.facture_id) {
-    const fac = await getFacture(op.facture_id);
-    if (fac) {
-      const ttc = Number(fac.total_ttc) || 0;
-      const nouveau = Math.max(0, Math.round(((Number(fac.montant_paye) || 0) - (Number(op.montant) || 0)) * 100) / 100);
-      const statut = nouveau <= 0 ? "a_payer" : nouveau >= ttc ? "paye" : "partiel";
-      await majPaiement(op.facture_id, { statut_paiement: statut, date_paiement: nouveau > 0 ? fac.date_paiement : null, montant_paye: nouveau }).catch(() => {});
-    }
+
+  const { data: lets } = await supabase.from("lettrages").select("*").eq("operation_id", opId);
+  const aReverser = (lets && lets.length)
+    ? lets.map((l) => ({ factureId: l.facture_id, montant: Number(l.montant) || 0 }))
+    : (op.facture_id ? [{ factureId: op.facture_id, montant: Number(op.montant) || 0 }] : []);
+
+  for (const r of aReverser) {
+    const fac = await getFacture(r.factureId);
+    if (!fac) continue;
+    const ttc = Number(fac.total_ttc) || 0;
+    const nouveau = Math.max(0, Math.round(((Number(fac.montant_paye) || 0) - r.montant) * 100) / 100);
+    const statut = nouveau <= 0 ? "a_payer" : nouveau >= ttc ? "paye" : "partiel";
+    await majPaiement(r.factureId, { statut_paiement: statut, date_paiement: nouveau > 0 ? fac.date_paiement : null, montant_paye: nouveau }).catch(() => {});
   }
+  await supabase.from("lettrages").delete().eq("operation_id", opId);
   const { error } = await supabase.from("operations_bancaires")
     .update({ lettree: false, facture_id: null }).eq("id", opId);
   if (error) throw error;
