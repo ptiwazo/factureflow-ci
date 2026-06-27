@@ -79,6 +79,7 @@ export async function render() {
     <div class="row wrap mt" style="gap:10px;justify-content:center;margin-bottom:24px">
       <a href="#/capture" class="btn btn-primary">📸 Nouvelle facture</a>
       <a href="#/echeancier" class="btn btn-secondary">📅 Échéancier</a>
+      <a href="#/banque" class="btn btn-secondary">🏦 Banque</a>
       <a href="#/commandes" class="btn btn-secondary">📦 Commandes</a>
       <a href="#/recurrences" class="btn btn-secondary">🔁 Abonnements</a>
       <a href="#/tva" class="btn btn-secondary">🧾 Déclaration TVA</a>
