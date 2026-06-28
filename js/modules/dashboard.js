@@ -15,9 +15,24 @@ export async function render() {
   const prenom = (getProfil()?.org_nom) || "";
   const maxFourn = Math.max(1, ...s.topFournisseurs.map((f) => f.total));
 
+  const h = new Date().getHours();
+  const salut = h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir";
+
   setView(`
-    <h1 class="page-title">Tableau de bord</h1>
-    <p class="muted" style="margin-top:-10px">${esc(prenom)} · ${moisLabel(new Date())}</p>
+    <div class="hero">
+      <h1>${salut} 👋</h1>
+      <div class="hero-sub">${esc(prenom)} · ${moisLabel(new Date())}</div>
+    </div>
+
+    <div class="actions-grid">
+      <a class="action-tile primary" href="#/capture"><span class="ic">📸</span><span class="lb">Nouvelle facture</span></a>
+      <a class="action-tile" href="#/echeancier"><span class="ic">📅</span><span class="lb">Échéancier</span></a>
+      <a class="action-tile" href="#/banque"><span class="ic">🏦</span><span class="lb">Banque</span></a>
+      <a class="action-tile" href="#/commandes"><span class="ic">📦</span><span class="lb">Commandes</span></a>
+      <a class="action-tile" href="#/recurrences"><span class="ic">🔁</span><span class="lb">Abonnements</span></a>
+      <a class="action-tile" href="#/tva"><span class="ic">🧾</span><span class="lb">TVA</span></a>
+      <a class="action-tile" href="#/analytics"><span class="ic">📈</span><span class="lb">Analyse</span></a>
+    </div>
 
     <div class="kpi-grid">
       <div class="kpi accent-amber">
@@ -61,8 +76,8 @@ export async function render() {
     <div class="card">
       ${s.topFournisseurs.length ? s.topFournisseurs.map((f) => `
         <div style="margin-bottom:12px">
-          <div class="row between"><span>${esc(f.nom)}</span><strong>${fcfa(f.total)}</strong></div>
-          <div class="confidence-bar"><span style="width:${Math.round((f.total / maxFourn) * 100)}%;background:var(--teal)"></span></div>
+          <div class="row between"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.nom)}</span><strong>${fcfa(f.total)}</strong></div>
+          <div class="bar-track"><span style="width:${Math.round((f.total / maxFourn) * 100)}%"></span></div>
         </div>`).join("") : `<p class="muted center">Pas encore de données.</p>`}
     </div>
 
@@ -75,15 +90,6 @@ export async function render() {
           <div class="li-amount">${fcfa(f.total_ttc, f.devise)}</div>
         </a>`).join("") : emptyState("🧾", "Aucune facture", "Commencez par en capturer une.")}
     </div>
-
-    <div class="row wrap mt" style="gap:10px;justify-content:center;margin-bottom:24px">
-      <a href="#/capture" class="btn btn-primary">📸 Nouvelle facture</a>
-      <a href="#/echeancier" class="btn btn-secondary">📅 Échéancier</a>
-      <a href="#/banque" class="btn btn-secondary">🏦 Banque</a>
-      <a href="#/commandes" class="btn btn-secondary">📦 Commandes</a>
-      <a href="#/recurrences" class="btn btn-secondary">🔁 Abonnements</a>
-      <a href="#/tva" class="btn btn-secondary">🧾 Déclaration TVA</a>
-      <a href="#/analytics" class="btn btn-secondary">📈 Analyse</a>
-    </div>
+    <div style="height:24px"></div>
   `);
 }

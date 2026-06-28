@@ -340,11 +340,45 @@ input::placeholder { color: #94A3B8; }
 .modal img, .modal iframe { width: 100%; border-radius: 10px; border: none; }
 .modal iframe { height: 70dvh; }
 
+/* ----------------------- Hero (tableau de bord) -------------------- */
+.hero {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+  color: #fff; border-radius: var(--radius-lg); padding: 22px 22px 24px; margin-bottom: 18px;
+  box-shadow: var(--shadow-md);
+}
+.hero::after { content: ""; position: absolute; right: -36px; top: -46px; width: 168px; height: 168px; border-radius: 50%; background: rgba(245,158,11,.22); }
+.hero h1 { font-size: 1.5rem; font-weight: 800; margin: 0; position: relative; }
+.hero .hero-sub { opacity: .9; margin-top: 6px; font-size: .92rem; position: relative; }
+
+/* ---------------------- Grille de tuiles d'actions ----------------- */
+.actions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.action-tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 15px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-decoration: none; color: var(--text); box-shadow: var(--shadow-sm);
+  transition: transform .12s, box-shadow .15s, border-color .15s;
+}
+.action-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--teal); }
+.action-tile:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+.action-tile .ic { font-size: 1.55rem; line-height: 1; }
+.action-tile .lb { font-size: .74rem; font-weight: 700; text-align: center; color: #334155; }
+.action-tile.primary { background: linear-gradient(160deg, var(--teal) 0%, var(--teal-dark) 100%); border-color: transparent; box-shadow: 0 6px 16px -6px rgba(15,118,110,.55); }
+.action-tile.primary .ic, .action-tile.primary .lb { color: #fff; }
+
+/* Barres « dépenses par fournisseur » */
+.bar-track { height: 9px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+.bar-track > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--teal), #2DD4BF); transition: width .5s ease; }
+
 /* ------------------------- ≥ 720px (tablette / desktop) ------------- */
+@media (min-width: 560px) {
+  .actions-grid { grid-template-columns: repeat(4, 1fr); }
+}
 @media (min-width: 720px) {
   .kpi-grid { grid-template-columns: repeat(4, 1fr); }
   .view { padding: 26px 20px; }
   .page-title { font-size: 1.7rem; }
+  .actions-grid { grid-template-columns: repeat(7, 1fr); }
 }
 
 /* Accessibilité : respect des préférences de mouvement réduit. */
