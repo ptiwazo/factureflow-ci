@@ -146,8 +146,16 @@ async function appelProxy(payload, { retries = CONFIG.AI_RETRIES } = {}) {
       clearTimeout(timer);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // On remonte le message précis du proxy (utile pour diagnostiquer la config).
-        throw new Error(data?.error || `Erreur IA (${res.status}).`);
+        // On remonte le message précis. `data.error` peut être :
+        //  - une chaîne (erreur émise par notre proxy : JWT, CORS, config) ;
+        //  - un OBJET { type, message } (erreur de l'API Anthropic relayée telle
+        //    quelle) — dans ce cas `new Error(objet)` afficherait "[object Object]".
+        // On extrait donc toujours un texte lisible.
+        const e = data?.error;
+        const msg = typeof e === "string" ? e
+          : (e?.message || e?.type || (e ? JSON.stringify(e) : ""))
+          || `Erreur IA (${res.status}).`;
+        throw new Error(msg);
       }
       return data;
     } catch (e) {
