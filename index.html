@@ -44,13 +44,41 @@
           <label for="email">E-mail</label>
           <input id="email" name="email" type="email" required placeholder="vous@entreprise.ci" />
         </div>
-        <div class="field">
+        <div id="password-field" class="field">
           <label for="password">Mot de passe</label>
           <input id="password" name="password" type="password" required minlength="6" placeholder="••••••••" />
         </div>
 
+        <!-- Mode « mot de passe oublié » : explication affichée à la place du champ. -->
+        <p id="reset-hint" class="muted hidden" style="font-size:.9rem;margin:0 0 14px">
+          Saisissez votre e-mail : vous recevrez un lien pour choisir un nouveau
+          mot de passe.
+        </p>
+
         <button id="auth-submit" class="btn btn-primary btn-block" type="submit">Se connecter</button>
         <p id="auth-error" class="form-error" role="alert"></p>
+
+        <button type="button" id="lien-oubli" class="btn btn-ghost btn-sm btn-block login-only">
+          Mot de passe oublié ?
+        </button>
+        <button type="button" id="lien-retour" class="btn btn-ghost btn-sm btn-block hidden">
+          ← Retour à la connexion
+        </button>
+      </form>
+
+      <!-- Retour du lien e-mail de récupération : choix du nouveau mot de passe. -->
+      <form id="newpass-form" class="hidden" novalidate>
+        <p class="muted" style="font-size:.95rem;margin:0 0 16px">
+          Choisissez un nouveau mot de passe pour votre compte.
+        </p>
+        <div class="field">
+          <label for="newpass">Nouveau mot de passe</label>
+          <input id="newpass" type="password" required minlength="6" placeholder="••••••••" autocomplete="new-password" />
+        </div>
+        <button id="newpass-submit" class="btn btn-primary btn-block" type="submit">
+          Enregistrer le mot de passe
+        </button>
+        <p id="newpass-error" class="form-error" role="alert"></p>
       </form>
     </div>
   </section>

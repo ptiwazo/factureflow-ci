@@ -11,7 +11,19 @@ import { $, $$, toast } from "./ui.js";
 import {
   chargerProfil, getProfil, connexion, inscription,
   deconnexion, onAuthChange, rejoindreOrganisation,
+  demanderReinitialisation, definirMotDePasse,
 } from "./auth.js";
+
+// Retour du lien e-mail de récupération : Supabase place « type=recovery » dans
+// le fragment, puis supabase-js le retire de l'URL de façon asynchrone. On le
+// capture donc ici, au chargement du module, avant ce nettoyage.
+// Détecté ici, au chargement du module, car supabase-js retire ensuite le
+// fragment de l'URL de façon asynchrone. L'événement PASSWORD_RECOVERY sert de
+// filet si ce nettoyage a déjà eu lieu.
+let recuperationEnCours = /(^|[#&])type=recovery(&|$)/.test(location.hash);
+// Évite que demarrerSession() ne réaffiche l'écran une fois le mot de passe
+// enregistré, et neutralise un PASSWORD_RECOVERY tardif.
+let recuperationTerminee = false;
 
 import * as dashboard    from "./modules/dashboard.js";
 import * as capture      from "./modules/capture.js";
@@ -107,15 +119,60 @@ export function navigate(hash) {
 /* --------------------------- Écran Auth ---------------------------- */
 let modeAuth = "login";
 
+// Applique l'affichage correspondant au mode courant (login / signup / reset).
+function appliquerModeAuth() {
+  const reset = modeAuth === "reset";
+  $$("[data-auth-tab]").forEach((b) =>
+    b.classList.toggle("active", !reset && b.dataset.authTab === modeAuth));
+  $$(".signup-only").forEach((el) => el.classList.toggle("hidden", modeAuth !== "signup"));
+  $$(".login-only").forEach((el) => el.classList.toggle("hidden", modeAuth !== "login"));
+  // En réinitialisation, le mot de passe n'a pas de sens : c'est le lien e-mail
+  // qui ouvrira la session. Le champ est requis, donc on le désactive aussi,
+  // sinon la validation HTML bloquerait l'envoi du formulaire.
+  $("#password-field").classList.toggle("hidden", reset);
+  $("#password").disabled = reset;
+  $("#reset-hint").classList.toggle("hidden", !reset);
+  $("#lien-retour").classList.toggle("hidden", !reset);
+  $("#auth-submit").textContent =
+    reset ? "Envoyer le lien" : modeAuth === "signup" ? "Créer mon compte" : "Se connecter";
+  $("#auth-error").textContent = "";
+}
+
 function initAuthUI() {
   $$("[data-auth-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       modeAuth = btn.dataset.authTab;
-      $$("[data-auth-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-      $$(".signup-only").forEach((el) => el.classList.toggle("hidden", modeAuth !== "signup"));
-      $("#auth-submit").textContent = modeAuth === "signup" ? "Créer mon compte" : "Se connecter";
-      $("#auth-error").textContent = "";
+      appliquerModeAuth();
     });
+  });
+
+  $("#lien-oubli").addEventListener("click", () => { modeAuth = "reset"; appliquerModeAuth(); });
+  $("#lien-retour").addEventListener("click", () => { modeAuth = "login"; appliquerModeAuth(); });
+
+  $("#newpass-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errBox = $("#newpass-error");
+    const submit = $("#newpass-submit");
+    const mdp = $("#newpass").value;
+    errBox.textContent = "";
+    if (mdp.length < 6) { errBox.textContent = "6 caractères minimum."; return; }
+    submit.disabled = true;
+    try {
+      await definirMotDePasse(mdp);
+      recuperationTerminee = true;
+      recuperationEnCours = false;
+      $("#newpass-form").classList.add("hidden");
+      $("#auth-form").classList.remove("hidden");
+      $(".tabs").classList.remove("hidden");
+      modeAuth = "login";
+      appliquerModeAuth();
+      toast("Mot de passe enregistré. Vous êtes connecté.", "success");
+      await demarrerSession();
+    } catch (err) {
+      errBox.textContent = err.message || "Échec.";
+    } finally {
+      submit.disabled = false;
+    }
   });
 
   $("#auth-form").addEventListener("submit", async (e) => {
@@ -128,6 +185,13 @@ function initAuthUI() {
     submit.disabled = true;
 
     try {
+      if (modeAuth === "reset") {
+        await demanderReinitialisation(email);
+        modeAuth = "login";
+        appliquerModeAuth();
+        toast("Si un compte existe pour cet e-mail, un lien vient d'être envoyé.", "success", 6000);
+        return;
+      }
       if (modeAuth === "signup") {
         const code = $("#org-code").value.trim();
         if (!code) throw new Error("Saisissez le code d'invitation de votre entreprise.");
@@ -135,10 +199,7 @@ function initAuthUI() {
         if (res.needConfirmation) {
           // Pas de session : Supabase exige la confirmation par e-mail.
           modeAuth = "login";
-          $$("[data-auth-tab]").forEach((b) => b.classList.toggle("active", b.dataset.authTab === "login"));
-          $$(".signup-only").forEach((el) => el.classList.add("hidden"));
-          $("#auth-submit").textContent = "Se connecter";
-          errBox.textContent = "";
+          appliquerModeAuth();
           toast("Compte créé. Confirmez votre e-mail (lien reçu), puis connectez-vous.", "success", 6000);
           return; // on ne tente pas d'ouvrir une session inexistante
         }
@@ -207,6 +268,17 @@ function afficherAuth() {
   basculer({ auth: true, app: false });
 }
 
+// Écran de choix du nouveau mot de passe, affiché au retour du lien e-mail.
+// Réutilise la carte d'authentification : onglets et formulaire de connexion
+// masqués, formulaire dédié affiché à la place.
+function afficherNouveauMotDePasse() {
+  basculer({ auth: true, app: false });
+  $(".tabs").classList.add("hidden");
+  $("#auth-form").classList.add("hidden");
+  $("#newpass-form").classList.remove("hidden");
+  $("#newpass").focus();
+}
+
 function afficherDesactive() {
   basculer({ auth: false, app: true });
   $("#view").innerHTML = `
@@ -221,6 +293,9 @@ function afficherDesactive() {
 }
 
 async function demarrerSession() {
+  // Prioritaire : tant que le nouveau mot de passe n'est pas choisi, on
+  // n'ouvre pas l'application, même si la session de récupération est valide.
+  if (recuperationEnCours && !recuperationTerminee) { afficherNouveauMotDePasse(); return; }
   const profil = await chargerProfil();
   if (!profil) { afficherAuth(); return; }
   if (profil.org_id && profil.actif === false) { afficherDesactive(); return; }
@@ -245,7 +320,13 @@ async function boot() {
 
   // Rafraîchit l'UI si la session disparaît ailleurs (déconnexion autre onglet,
   // expiration). On ne relance pas la session ici pour éviter les boucles.
-  onAuthChange(() => {
+  onAuthChange((event) => {
+    // Le lien e-mail peut être traité après le démarrage : on bascule alors ici.
+    if (event === "PASSWORD_RECOVERY" && !recuperationTerminee) {
+      recuperationEnCours = true;
+      afficherNouveauMotDePasse();
+      return;
+    }
     chargerProfil().then((p) => { if (!p) afficherAuth(); });
   });
 

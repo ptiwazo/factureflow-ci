@@ -62,6 +62,21 @@ export async function deconnexion() {
   profilCourant = null;
 }
 
+// Envoie le lien de réinitialisation du mot de passe. `redirectTo` doit figurer
+// dans les « Redirect URLs » du projet Supabase, sinon le lien est rejeté.
+export async function demanderReinitialisation(email) {
+  const redirectTo = location.origin + location.pathname;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw new Error(traduireErreur(error.message));
+}
+
+// Définit le nouveau mot de passe. Exige la session de récupération ouverte par
+// le lien e-mail : sans elle, Supabase renvoie « Auth session missing ».
+export async function definirMotDePasse(password) {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw new Error(traduireErreur(error.message));
+}
+
 // Charge le profil applicatif (org + rôle) pour l'utilisateur connecté.
 // Renvoie null si pas de session ou pas encore rattaché à une org.
 export async function chargerProfil() {
@@ -140,7 +155,7 @@ export async function getAccessToken() {
 
 // Réagit aux changements de session (login/logout) pour rafraîchir l'UI.
 export function onAuthChange(callback) {
-  supabase.auth.onAuthStateChange((_event, _session) => callback());
+  supabase.auth.onAuthStateChange((event, _session) => callback(event));
 }
 
 // Messages d'erreur Supabase → français lisible.
@@ -158,6 +173,14 @@ function traduireErreur(msg = "") {
     return "Indiquez le nom de l'entreprise.";
   if (m.includes("could not find the function") || m.includes("does not exist"))
     return "Fonctionnalité non encore activée côté serveur (migration à appliquer).";
+  if (m.includes("auth session missing") || m.includes("session_not_found"))
+    return "Lien expiré ou déjà utilisé. Demandez un nouveau lien de réinitialisation.";
+  if (m.includes("same as the old") || m.includes("should be different"))
+    return "Le nouveau mot de passe doit être différent de l'ancien.";
+  if (m.includes("redirect") && m.includes("not allowed"))
+    return "Adresse de redirection non autorisée (à ajouter dans Supabase → Authentication → URL Configuration).";
+  if (m.includes("rate limit") || m.includes("too many"))
+    return "Trop de demandes. Patientez quelques minutes avant de réessayer.";
   if (m.includes("password")) return "Mot de passe trop court (6 caractères minimum).";
   if (m.includes("email")) return "Adresse e-mail invalide.";
   return msg || "Une erreur est survenue.";
