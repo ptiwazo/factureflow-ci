@@ -23,7 +23,9 @@ export async function render() {
 
   setView(`
     <div class="row between">
-      <a href="#/settings" class="btn btn-ghost btn-sm">← Réglages</a>
+      ${getProfil()?.org_id
+        ? `<a href="#/settings" class="btn btn-ghost btn-sm">← Réglages</a>`
+        : `<span class="muted" style="font-size:.85rem">Compte non rattaché à une entreprise</span>`}
     </div>
     <h1 class="page-title">Console super admin</h1>
     <p class="muted" style="margin-top:-10px;font-size:.85rem">

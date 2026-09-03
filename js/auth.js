@@ -79,6 +79,10 @@ export async function chargerProfil() {
     // Session valide mais utilisateur non rattaché (ex. confirmation e-mail
     // en attente, ou org non créée). On garde l'user pour permettre l'onboarding.
     profilCourant = { user: session.user, org_id: null, role: null, org_nom: null, erp: "sap", actif: true };
+    // Le super admin de plateforme n'est membre d'aucune entreprise : sans ce
+    // contrôle ici, il resterait bloqué sur l'onboarding, qui ne propose que
+    // « rejoindre avec un code » — or c'est lui qui délivre ces codes.
+    profilCourant.superAdmin = await estSuperAdmin();
     return profilCourant;
   }
 
@@ -98,12 +102,17 @@ export async function chargerProfil() {
     .from("organisations").select("erp").eq("id", data.org_id).maybeSingle();
   if (org?.erp) profilCourant.erp = org.erp;
 
-  // Super admin de plateforme (best-effort : tolère l'absence de la fonction).
-  profilCourant.superAdmin = false;
-  const { data: sa } = await supabase.rpc("is_super_admin");
-  if (sa === true) profilCourant.superAdmin = true;
+  profilCourant.superAdmin = await estSuperAdmin();
 
   return profilCourant;
+}
+
+// Super admin de plateforme, en best-effort : tolère l'absence de la fonction
+// `is_super_admin` (migration_superadmin.sql pas encore appliquée) sans jamais
+// faire échouer le chargement du profil.
+async function estSuperAdmin() {
+  const { data } = await supabase.rpc("is_super_admin");
+  return data === true;
 }
 
 // Crée l'organisation pour un utilisateur connecté mais non rattaché

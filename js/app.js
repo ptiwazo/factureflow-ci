@@ -71,9 +71,11 @@ function parseHash() {
 }
 
 async function router() {
-  // Routage uniquement si une session + org sont présentes.
+  // Routage uniquement si une session + org sont présentes. Seule exception :
+  // le super admin sans entreprise accède à sa console, où il crée justement
+  // les organisations et leurs codes d'invitation.
   const profil = getProfil();
-  if (!profil?.org_id) return;
+  if (!profil?.org_id && !(profil?.superAdmin && parseHash().name === "superadmin")) return;
 
   const { name, param } = parseHash();
   const handler = routes[name] || routes.dashboard;
@@ -164,6 +166,7 @@ function initAuthUI() {
 // (ex. confirmation e-mail différée). On lui propose de la créer.
 function afficherOnboarding() {
   basculer({ auth: false, app: true });
+  const profil = getProfil();
   $("#view").innerHTML = `
     <h1 class="page-title">Dernière étape</h1>
     <div class="card">
@@ -172,7 +175,16 @@ function afficherOnboarding() {
       <div class="field"><label for="ob-code">Code d'invitation</label>
         <input id="ob-code" type="text" placeholder="Code reçu" style="text-transform:uppercase" autocomplete="off" /></div>
       <button id="ob-submit" class="btn btn-primary btn-block">Rejoindre l'entreprise</button>
-    </div>`;
+    </div>
+
+    ${profil?.superAdmin ? `<div class="card">
+      <h3>Console super admin</h3>
+      <p class="muted" style="font-size:.85rem;margin-top:-6px">
+        Vous n'êtes rattaché à aucune entreprise. En tant que super administrateur de la
+        plateforme, vous pouvez créer les entreprises et générer leurs codes d'invitation.
+      </p>
+      <a href="#/superadmin" class="btn btn-primary btn-sm">Ouvrir la console</a>
+    </div>` : ""}`;
 
   $("#ob-submit").addEventListener("click", async () => {
     const code = $("#ob-code").value.trim();
