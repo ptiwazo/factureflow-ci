@@ -101,8 +101,12 @@ exports.handler = async (event) => {
     const messages = {
       no_token: "Aucun jeton transmis au proxy.",
       no_user: "Jeton valide mais aucun utilisateur associé.",
-      auth_401: "Jeton refusé par Supabase (clé anon erronée ou jeton invalide).",
-      auth_403: "Accès refusé par Supabase (vérifiez SUPABASE_ANON_KEY).",
+      // Répartition vérifiée sur Supabase (sept. 2026) : c'est la CLÉ envoyée en
+      // en-tête `apikey` qui décide du 401, et le JETON UTILISATEUR du 403.
+      // Les deux messages étaient inversés, ce qui envoyait un utilisateur à
+      // la session expirée vérifier une clé serveur qu'il ne voit même pas.
+      auth_401: "Clé Supabase refusée : SUPABASE_ANON_KEY est absente ou ne correspond pas au projet (configuration Netlify).",
+      auth_403: "Session expirée ou jeton invalide. Reconnectez-vous, puis réessayez.",
       auth_404: "Endpoint Supabase introuvable (vérifiez SUPABASE_URL).",
       auth_unreachable: "Supabase injoignable depuis le proxy.",
     };
