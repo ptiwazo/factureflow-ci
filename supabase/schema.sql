@@ -59,6 +59,9 @@ create table if not exists public.fournisseurs (
   ncc         text,
   rccm        text,
   telephone   text,
+  -- Compte SAP (CardCode) : prioritaire sur le NCC pour la ligne crédit de
+  -- l'export SAP (voir js/modules/export.js).
+  compte_sap  text,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   created_by  uuid references auth.users(id)
@@ -103,6 +106,9 @@ create table if not exists public.lignes (
   quantite      numeric(14,3) not null default 0,
   prix_unitaire numeric(14,2) not null default 0,
   montant_ht    numeric(14,2) not null default 0,
+  -- Taux par ligne : gère les factures à taux mixtes et les exonérations.
+  -- 18 % par défaut (Côte d'Ivoire).
+  taux_tva      numeric(5,2)  not null default 18,
   created_at    timestamptz not null default now()
 );
 create index if not exists idx_lignes_facture on public.lignes(facture_id);
