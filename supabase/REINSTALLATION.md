@@ -64,13 +64,28 @@ Authentication → URL Configuration :
 
 ## 6. Recréer le compte super administrateur
 
-1. Depuis l'application, onglet **Créer un compte** :
-   `jocelinsoumahoro@outlook.fr`.
-2. Confirmez l'e-mail (ou Authentication → Users → le compte → *Confirm email*).
-3. SQL Editor → jouer l'**ÉTAPE 4** de `supabase/superadmin_acces.sql` pour
-   inscrire le compte dans `super_admins`, puis l'**ÉTAPE 6** pour vérifier.
-4. Reconnectez-vous : la console est accessible via Réglages, ou directement
-   sur `#/superadmin` même sans entreprise (correctif e91bf33).
+> **N'utilisez pas le formulaire d'inscription de l'application pour ce
+> premier compte.** Il exige un code d'invitation (`js/app.js` ne passe que
+> `mode: "join"` et refuse un code vide), or une base neuve ne contient aucune
+> entreprise, donc aucun code. Les codes viennent de la console super admin,
+> qui exige un compte super admin : la boucle est fermée. S'ajoute le fait que
+> `mailer_autoconfirm` vaut `false` et qu'un projet neuf n'a pas de SMTP, donc
+> l'e-mail de confirmation n'arrive généralement pas.
+
+1. Authentication → Users → **Add user** → *Create new user* :
+   `jocelinsoumahoro@outlook.fr`, un mot de passe, et **cochez « Auto Confirm
+   User »**. Cela contourne d'un coup le code d'invitation et l'e-mail de
+   confirmation.
+   *(Si un compte issu d'une tentative ratée existe déjà : supprimez-le, ou
+   ouvrez-le et faites « Confirm email ».)*
+2. SQL Editor → jouer l'**ÉTAPE 4** de `supabase/superadmin_acces.sql` pour
+   inscrire le compte dans `super_admins`, puis l'**ÉTAPE 6** pour vérifier
+   que la colonne `super_admin` vaut bien `true`.
+3. Connectez-vous : la console est accessible via Réglages, ou directement sur
+   `#/superadmin` même sans entreprise (correctif e91bf33).
+
+Les comptes suivants, eux, s'inscrivent normalement depuis l'application avec
+le code d'invitation produit à l'étape 7.
 
 ## 7. Recréer les entreprises
 
