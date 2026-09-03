@@ -8,6 +8,33 @@
 -- périmé — ouvrez un « New query » vierge, ce n'est pas une erreur SQL.
 -- =====================================================================
 
+-- ÉTAPE 0 — Le compte peut-il seulement se connecter ?
+-- Diagnostique les 3 causes d'échec de connexion. Lisez les colonnes :
+--   * aucune ligne          => le compte N'EXISTE PAS : créez-le depuis l'écran
+--                              « Créer un compte » de l'application.
+--   * email_confirme = false => Supabase refuse la connexion tant que l'e-mail
+--                              n'est pas confirmé (message « E-mail non confirmé »).
+--                              Corrigez dans Studio : Authentication > Users >
+--                              le compte > Confirm email.
+--   * email_confirme = true  => le compte existe et est confirmé : c'est donc le
+--                              MOT DE PASSE qui est faux. L'application n'ayant
+--                              aucun parcours « mot de passe oublié », passez par
+--                              Studio : Authentication > Users > le compte >
+--                              menu ... > Reset password (ou Send magic link).
+select
+  au.email,
+  au.email_confirmed_at is not null as email_confirme,
+  au.banned_until,
+  au.last_sign_in_at,
+  au.created_at
+from auth.users au
+where lower(au.email) = lower('jocelinsoumahoro@outlook.fr');
+
+-- Variante : lister TOUS les comptes, au cas où l'adresse comporterait une
+-- faute de frappe ou un espace invisible (fréquent en copier-coller).
+-- select email, email_confirmed_at is not null as confirme, created_at
+-- from auth.users order by created_at desc limit 50;
+
 -- ÉTAPE 1 — Diagnostic : la migration super admin est-elle en place ?
 select
   to_regclass('public.super_admins')            is not null as table_super_admins_ok,
