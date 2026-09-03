@@ -2,8 +2,11 @@
    FactureFlow CI — Configuration publique
    ---------------------------------------------------------------------
    ⚠️ AUCUN SECRET ICI. Seules figurent des valeurs publiques :
-     - l'URL et la clé "anon" Supabase (conçues pour le navigateur, la
-       sécurité réelle vient des politiques RLS) ;
+     - l'URL et la clé "publishable" Supabase (conçues pour le navigateur,
+       la sécurité réelle vient des politiques RLS). Elle remplace l'ancienne
+       clé "anon" JWT, dépréciée par Supabase ; le rôle est identique. Ne
+       JAMAIS mettre ici la clé "secret" (sb_secret_...), qui contourne la RLS
+       et n'a sa place que dans les variables Netlify ;
      - l'URL du proxy IA Netlify.
    La clé ANTHROPIC_API_KEY reste exclusivement côté Netlify Function.
 ===================================================================== */
@@ -11,8 +14,8 @@
 export const CONFIG = {
   // Supabase — URL RACINE du projet (sans /rest/v1). Le client supabase-js
   // construit lui-même les chemins /rest, /auth, /storage à partir d'elle.
-  SUPABASE_URL: "https://cilceojlmqecqxkfexzk.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpbGNlb2psbXFlY3F4a2ZleHprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwODA2MzgsImV4cCI6MjA5NzY1NjYzOH0.WEyevIWMko6py4vIKyGn6GPxhSPawjVoj_RSibiZUgY",
+  SUPABASE_URL: "https://lleujwuzrzapacvovxlk.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_aYK2SX1K1CN2NNnwq-nRLg_a8n6G8t3",
 
   // Proxy IA Netlify (sortie de `netlify deploy`)
   // En dev local via `netlify dev`, l'URL relative ci-dessous fonctionne.
