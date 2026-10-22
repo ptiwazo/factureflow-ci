@@ -73,6 +73,9 @@ const routes = {
   analytics:       (p) => analytics.render(p),
   audit:           (p) => audit.render(p),
   superadmin:      (p) => superadmin.render(p),
+  // Super admin sans entreprise qui veut en rejoindre une (le rattachement fait,
+  // la même route le renvoie au tableau de bord).
+  rejoindre:       () => (getProfil()?.org_id ? navigate("#/dashboard") : afficherOnboarding()),
   settings:        (p) => settings.render(p),
 };
 
@@ -84,10 +87,16 @@ function parseHash() {
 
 async function router() {
   // Routage uniquement si une session + org sont présentes. Seule exception :
-  // le super admin sans entreprise accède à sa console, où il crée justement
-  // les organisations et leurs codes d'invitation.
+  // le super admin sans entreprise, cantonné à sa console (où il crée justement
+  // les organisations et leurs codes d'invitation) et à l'écran « Rejoindre ».
   const profil = getProfil();
-  if (!profil?.org_id && !(profil?.superAdmin && parseHash().name === "superadmin")) return;
+  if (!profil?.org_id) {
+    if (!profil?.superAdmin) return;
+    if (!["superadmin", "rejoindre"].includes(parseHash().name)) {
+      location.hash = "#/superadmin"; // relance le routeur via 'hashchange'
+      return;
+    }
+  }
 
   const { name, param } = parseHash();
   const handler = routes[name] || routes.dashboard;
@@ -299,12 +308,19 @@ async function demarrerSession() {
   const profil = await chargerProfil();
   if (!profil) { afficherAuth(); return; }
   if (profil.org_id && profil.actif === false) { afficherDesactive(); return; }
-  if (!profil.org_id) { afficherOnboarding(); return; }
 
-  // Session complète : on affiche l'app.
+  // Accès à la console depuis l'en-tête, sur tous les écrans de l'appli.
+  $("#btn-superadmin").classList.toggle("hidden", !profil.superAdmin);
+  // Les onglets mènent tous à des données d'entreprise : inutiles sans org.
+  $(".tabbar").classList.toggle("hidden", !profil.org_id);
+
+  if (!profil.org_id && !profil.superAdmin) { afficherOnboarding(); return; }
+
+  // Session complète (ou super admin sans entreprise) : on affiche l'app.
   basculer({ auth: false, app: true });
-  $("#org-badge").textContent = profil.org_nom || "";
-  if (!location.hash || location.hash === "#") location.hash = "#/dashboard";
+  $("#org-badge").textContent = profil.org_id ? (profil.org_nom || "") : "Super admin";
+  const accueil = profil.org_id ? "#/dashboard" : "#/superadmin";
+  if (!location.hash || location.hash === "#") location.hash = accueil;
   router();
 }
 

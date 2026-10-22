@@ -25,7 +25,8 @@ export async function render() {
     <div class="row between">
       ${getProfil()?.org_id
         ? `<a href="#/settings" class="btn btn-ghost btn-sm">← Réglages</a>`
-        : `<span class="muted" style="font-size:.85rem">Compte non rattaché à une entreprise</span>`}
+        : `<span class="muted" style="font-size:.85rem">Compte non rattaché à une entreprise ·
+             <a href="#/rejoindre">rejoindre une entreprise</a></span>`}
     </div>
     <h1 class="page-title">Console super admin</h1>
     <p class="muted" style="margin-top:-10px;font-size:.85rem">

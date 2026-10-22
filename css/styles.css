@@ -85,6 +85,7 @@ a { color: var(--teal-700); }
   background: transparent; border: none; color: #fff; font-size: 1.3rem;
   cursor: pointer; padding: 6px 10px; border-radius: 8px; transition: background .15s;
 }
+a.icon-btn { text-decoration: none; }
 .icon-btn:hover { background: rgba(255,255,255,.16); }
 .icon-btn:focus-visible { outline: 2px solid rgba(255,255,255,.6); }
 

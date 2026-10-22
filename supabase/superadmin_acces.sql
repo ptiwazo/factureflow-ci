@@ -1,7 +1,7 @@
 -- =====================================================================
 -- FactureFlow CI — Diagnostic et octroi de l'accès SUPER ADMIN
 -- ---------------------------------------------------------------------
--- À exécuter dans le SQL Editor Supabase (projet cilceojlmqecqxkfexzk).
+-- À exécuter dans le SQL Editor Supabase (projet lleujwuzrzapacvovxlk).
 -- Compte concerné : jocelinsoumahoro@outlook.fr (celui de migration_superadmin.sql).
 -- Exécutez les étapes UNE PAR UNE et lisez le résultat de chacune.
 -- Astuce : si Studio affiche « Unable to find snippet with ID », l'onglet est
@@ -10,15 +10,17 @@
 
 -- ÉTAPE 0 — Le compte peut-il seulement se connecter ?
 -- Diagnostique les 3 causes d'échec de connexion. Lisez les colonnes :
---   * aucune ligne          => le compte N'EXISTE PAS : créez-le depuis l'écran
---                              « Créer un compte » de l'application.
+--   * aucune ligne          => le compte N'EXISTE PAS : créez-le dans Studio,
+--                              Authentication > Users > Add user, case
+--                              « Auto Confirm User » cochée (l'inscription de
+--                              l'appli exige un code d'invitation).
 --   * email_confirme = false => Supabase refuse la connexion tant que l'e-mail
 --                              n'est pas confirmé (message « E-mail non confirmé »).
 --                              Corrigez dans Studio : Authentication > Users >
 --                              le compte > Confirm email.
 --   * email_confirme = true  => le compte existe et est confirmé : c'est donc le
---                              MOT DE PASSE qui est faux. L'application n'ayant
---                              aucun parcours « mot de passe oublié », passez par
+--                              MOT DE PASSE qui est faux : lien « Mot de passe
+--                              oublié » de l'écran de connexion, ou à défaut
 --                              Studio : Authentication > Users > le compte >
 --                              menu ... > Reset password (ou Send magic link).
 select
