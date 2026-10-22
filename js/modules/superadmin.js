@@ -24,7 +24,7 @@ export async function render() {
   setView(`
     <div class="row between">
       ${getProfil()?.org_id
-        ? `<a href="#/settings" class="btn btn-ghost btn-sm">← Réglages</a>`
+        ? `<a href="#/dashboard" class="btn btn-ghost btn-sm">← Espace ${esc(getProfil().org_nom)}</a>`
         : `<span class="muted" style="font-size:.85rem">Compte non rattaché à une entreprise ·
              <a href="#/rejoindre">rejoindre une entreprise</a></span>`}
     </div>

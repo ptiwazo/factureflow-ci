@@ -99,6 +99,9 @@ async function router() {
   }
 
   const { name, param } = parseHash();
+  // L'en-tête dit dans quel espace on se trouve : la plateforme ou l'entreprise.
+  $("#org-badge").textContent = (name === "superadmin" || !profil.org_id)
+    ? "Super admin" : (profil.org_nom || "");
   const handler = routes[name] || routes.dashboard;
   marquerOnglet(name);
   try {
@@ -216,7 +219,7 @@ function initAuthUI() {
       } else {
         await connexion(email, password);
       }
-      await demarrerSession();
+      await demarrerSession({ connexion: true });
     } catch (err) {
       errBox.textContent = err.message || "Échec.";
     } finally {
@@ -301,7 +304,10 @@ function afficherDesactive() {
   $("#dz-logout").onclick = async () => { await deconnexion(); afficherAuth(); };
 }
 
-async function demarrerSession() {
+// connexion = true juste après la saisie des identifiants : le super admin
+// arrive alors sur sa console même si l'URL pointait ailleurs (#/dashboard
+// d'une session précédente). Au simple rechargement, on garde la page en cours.
+async function demarrerSession({ connexion = false } = {}) {
   // Prioritaire : tant que le nouveau mot de passe n'est pas choisi, on
   // n'ouvre pas l'application, même si la session de récupération est valide.
   if (recuperationEnCours && !recuperationTerminee) { afficherNouveauMotDePasse(); return; }
@@ -318,9 +324,12 @@ async function demarrerSession() {
 
   // Session complète (ou super admin sans entreprise) : on affiche l'app.
   basculer({ auth: false, app: true });
-  $("#org-badge").textContent = profil.org_id ? (profil.org_nom || "") : "Super admin";
-  const accueil = profil.org_id ? "#/dashboard" : "#/superadmin";
-  if (!location.hash || location.hash === "#") location.hash = accueil;
+  const accueil = profil.superAdmin ? "#/superadmin" : "#/dashboard";
+  const sansPage = !location.hash || location.hash === "#";
+  if ((sansPage || (connexion && profil.superAdmin)) && location.hash !== accueil) {
+    location.hash = accueil; // 'hashchange' lance le routeur
+    return;
+  }
   router();
 }
 
